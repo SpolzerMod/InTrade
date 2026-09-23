@@ -1,0 +1,82 @@
+# InTrade configuration.
+# Messages and menu texts are in lang/<language>.yml.
+
+# "auto" shows every player the messages in their game language. English and Russian are included,
+# other languages can be added as new files in lang/. Any other value (for example "ru") uses one
+# language for everyone.
+language: auto
+# Used for the console and for game languages without a file in lang/.
+default-language: en
+
+permissions:
+  # true: all players can trade by default.
+  # false: players need intrade.player (or individual permissions) from a permissions plugin such as LuckPerms.
+  # Staff permissions are always limited to operators by default.
+  open-to-everyone: true
+
+requests:
+  # Time before an unanswered request expires.
+  expire-seconds: 60
+  # Minimum time between two requests from the same player.
+  cooldown-seconds: 5
+  # Allow sending a request by sneaking and right-clicking a player.
+  sneak-click: true
+  # Maximum distance between players. 0 disables the check.
+  max-distance: 0
+  # Allow trades only between players in the same world.
+  same-world: false
+
+safety:
+  # Time after any change during which the "Ready" button is locked.
+  change-lock-seconds: 3
+  # Time a changed or removed item stays highlighted for the partner.
+  highlight-seconds: 6
+  # Countdown after both players are ready. Any change stops it.
+  confirm-seconds: 3
+
+currencies:
+  # Requires Vault and an economy plugin.
+  money:
+    enabled: true
+  # Whole experience levels.
+  experience:
+    enabled: true
+  # Requires PlayerPoints.
+  playerpoints:
+    enabled: true
+
+# Materials that cannot be traded.
+blocked-items: []
+#  - BEDROCK
+#  - BARRIER
+
+# Worlds where trades cannot be started.
+disabled-worlds: []
+
+history:
+  enabled: true
+  # Trades older than this are deleted on startup. 0 keeps all trades.
+  # Trade counts and the top list are not affected.
+  keep-days: 90
+
+# Changes in this section require a server restart.
+storage:
+  # sqlite: local file plugins/InTrade/trades.db, no setup required.
+  # mysql: MySQL or MariaDB server, configured below.
+  type: sqlite
+  # Unique name of this server. Only needed when several servers use the same MySQL database.
+  # Items in open trade windows and /trade claim mail are kept per server,
+  # trade history and trade counts are shared.
+  server-id: main
+  mysql:
+    host: localhost
+    port: 3306
+    database: minecraft
+    user: root
+    password: ""
+    # Number of connections. One is used for writing, the rest for reading.
+    pool-size: 4
+    # Additional JDBC driver properties.
+    properties:
+      useSSL: false
+      allowPublicKeyRetrieval: true

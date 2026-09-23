@@ -1,0 +1,193 @@
+# InTrade, русский язык. Разметка MiniMessage: https://docs.advntr.dev/minimessage/format.html
+
+prefix: "<gradient:#7aa2f7:#bb9af7><bold>InTrade</bold></gradient> <dark_gray>»</dark_gray> "
+
+currency:
+  money: "<gold>Монеты</gold>"
+  experience: "<green>Уровни опыта</green>"
+  playerpoints: "<light_purple>Поинты</light_purple>"
+
+menu:
+  title: "<gradient:#4f5bd5:#9b4dca>Обмен</gradient> <dark_gray>с <partner>"
+  head:
+    own: "<aqua>Вы <gray>(<player>)"
+    own-lore:
+      - "<gray>Ваше предложение слева"
+    partner: "<light_purple><player>"
+    partner-lore:
+      - "<gray>Предложение игрока справа"
+  cancel:
+    name: "<red>Отменить обмен"
+    lore:
+      - "<gray>Все предметы вернутся владельцам."
+  help:
+    name: "<yellow>Как пользоваться"
+    lore:
+      - "<gray>Нажмите на предмет в инвентаре, чтобы добавить его."
+      - "<gray>ЛКМ добавляет весь стак, ПКМ - один предмет."
+      - "<gray>Нажмите на свой предмет в обмене, чтобы забрать его."
+      - "<gray>Валюта: ЛКМ - указать сумму, ПКМ - убрать."
+      - "<gray>ПКМ по шалкеру или мешку партнёра показывает содержимое."
+      - ""
+      - "<dark_gray>После любого изменения готовность сбрасывается"
+      - "<dark_gray>у обоих, а кнопка блокируется на несколько секунд."
+  changed:
+    - "<yellow>Только что изменено, проверьте!"
+  removed:
+    name: "<red>Убрано: <count> <item>"
+    lore:
+      - "<gray>Партнёр убрал этот предмет из обмена."
+  currency:
+    own:
+      name: "<currency>: <white><amount>"
+      empty: "<currency>: <dark_gray>нет"
+      lore:
+        - "<gray>На счету: <white><balance>"
+        - ""
+        - "<yellow>ЛКМ<gray> - указать сумму"
+        - "<yellow>ПКМ<gray> - убрать"
+    partner:
+      name: "<currency>: <white><amount>"
+      empty: "<currency>: <dark_gray>нет"
+      lore:
+        - "<gray>Предлагает партнёр."
+    changed:
+      - "<yellow>Сумма только что изменилась!"
+    locked:
+      name: "<currency>: <dark_gray>недоступно"
+      lore:
+        - "<gray>У вас нет права обменивать эту валюту."
+  status:
+    ready: "<green><player> готов"
+    not-ready: "<red><player> не готов"
+    input: "<yellow><player> вводит сумму..."
+    preview: "<yellow><player> смотрит содержимое"
+  ready:
+    idle:
+      name: "<green><bold>Готов"
+      lore:
+        - "<gray>Нажмите, когда всё проверите."
+        - "<gray>Обмен начнётся, когда будут готовы оба."
+    waiting:
+      name: "<yellow>Ожидание <player>..."
+      lore:
+        - "<gray>Нажмите, чтобы отменить готовность."
+    countdown:
+      name: "<green><bold>Обмен через <seconds>"
+      lore:
+        - "<gray>Нажмите, чтобы остановить."
+    locked:
+      name: "<gold>Подождите <seconds> с"
+      lore:
+        - "<gray>Предложение изменилось, проверьте его ещё раз."
+    empty:
+      name: "<dark_gray>Нечего обменивать"
+      lore:
+        - "<gray>Добавьте предмет или укажите сумму."
+
+preview:
+  title: "<dark_gray>Содержимое: <item>"
+
+prompt:
+  title: "Сколько <currency>?"
+  balance: "<gray>На счету: <white><balance>"
+  hint: "<dark_gray>Введите сумму, например 1500, 2.5k или 1m. Пустое поле или 0 убирает сумму."
+  retry: "<red>Не удалось распознать число, попробуйте ещё раз."
+  label: "Сумма"
+  confirm: "<green>Готово"
+  all: "<gold>Всё (<balance>)"
+  cancel: "<gray>Отмена"
+  invalid: "<red>\"<input>\" не является числом."
+  bedrock-label: "Сумма (на счету <balance>)"
+  bedrock-label-retry: "Это не число. Сумма (на счету <balance>)"
+
+request:
+  form:
+    title: "Запрос на обмен"
+    content: "<player> предлагает вам обмен."
+    accept: "Принять"
+    deny: "Отклонить"
+  self: "<red>Нельзя обмениваться с самим собой."
+  sent: "<gray>Запрос отправлен игроку <white><player></white>. Он действует <seconds> с."
+  received: "<white><player></white> <gray>предлагает обмен.</gray> <accept> <deny>"
+  accept-button: "<hover:show_text:'<gray>Открыть обмен с <player>'><green>[Принять]</green></hover>"
+  deny-button: "<hover:show_text:'<gray>Отказаться от обмена'><red>[Отклонить]</red></hover>"
+  already-sent: "<gray>Вы уже отправили запрос игроку <white><player></white>. Дождитесь ответа."
+  cooldown: "<red>Следующий запрос можно отправить через <seconds> с."
+  target-muted: "<white><player></white> <gray>сейчас не принимает запросы на обмен."
+  target-no-permission: "<white><player></white> <gray>не может участвовать в обмене."
+  none: "<gray>Входящих запросов нет."
+  none-from: "<gray>Запросов от <white><player></white> нет."
+  denied: "<gray>Вы отклонили запрос игрока <white><player></white>."
+  denied-by: "<white><player></white> <red>отклонил ваш запрос."
+  expired: "<gray>Запрос игроку <white><player></white> истёк."
+  you-busy: "<red>Сначала завершите текущий обмен."
+  target-busy: "<white><player></white> <gray>уже участвует в обмене."
+  world-disabled: "<red>В этом мире обмен отключён."
+  other-world: "<white><player></white> <red>находится в другом мире."
+  too-far: "<white><player></white> <red>слишком далеко (не дальше <distance> блоков)."
+
+trade:
+  blocked-item: "<red>Предмет <white><item></white> нельзя обменивать."
+  offer-full: "<red>В вашем предложении нет свободных ячеек."
+  inventory-full: "<red>В инвентаре нет места."
+  not-enough-own: "<red>Недостаточно средств: нужно <amount>, на счету <balance>."
+  completed: "<green>Обмен с <white><player></white> завершён."
+  cancelled:
+    by: "<white><player></white> <red>отменил обмен."
+    left: "<white><player></white> <red>вышел с сервера, обмен отменён."
+    died: "<white><player></white> <red>погиб, обмен отменён."
+    blocked: "<red>Не удалось открыть окно обмена для <player>."
+  failed:
+    not-enough: "<red>У <white><player></white> недостаточно средств. Обмен остановлен."
+    no-space: "<red>У <white><player></white> недостаточно места в инвентаре. Обмен остановлен."
+    deposit: "<white><player></white> <red>не может получить эту сумму. Обмен остановлен, все балансы восстановлены."
+
+mail:
+  saved: "<yellow>Предметы из обмена сохранены и вернутся после возрождения. Если этого не произошло, введите <white>/trade claim</white>."
+  stored: "<yellow>Часть предметов не поместилась. Заберите их командой <white>/trade claim</white>."
+  delivered: "<green>Получено из почты обмена стаков: <count>."
+  partial: "<yellow>Ещё стаков в почте: <count>. Освободите место и введите <white>/trade claim</white>."
+  empty: "<gray>Почта обмена пуста."
+
+command:
+  help: "<gray><white>/trade <ник></white> - предложить обмен<newline><white>/trade accept</white>, <white>/trade deny</white> - принять или отклонить запрос<newline><white>/trade history</white> - история обменов<newline><white>/trade toggle</white> - включить или выключить входящие запросы<newline><white>/trade claim</white> - забрать предметы, которые не поместились<newline>Запрос также можно отправить, нажав ПКМ по игроку с зажатым Shift."
+  toggle-on: "<green>Входящие запросы на обмен включены."
+  toggle-off: "<gray>Входящие запросы на обмен выключены."
+  reloaded: "<green>Конфигурация и тексты перезагружены."
+  player-not-found: "<red>Игрок <white><player></white> не найден."
+  players-only: "<red>Команда доступна только игрокам."
+  no-permission: "<red>Недостаточно прав."
+
+history:
+  title: "<gradient:#4f5bd5:#9b4dca>История</gradient> <dark_gray><player>, стр. <page>"
+  previous: "<yellow>Предыдущая страница"
+  next: "<yellow>Следующая страница"
+  back: "<yellow>К списку"
+  info: "<yellow>История обменов"
+  empty: "<gray>Обменов пока не было"
+  info-lore:
+    - "<gray>Сначала новые"
+  disabled: "<red>История обменов на сервере отключена."
+  entry:
+    name: "<light_purple><player>"
+    header:
+      - "<dark_gray><date>"
+      - ""
+    gave:
+      - "<red>Отдано:"
+    got:
+      - ""
+      - "<green>Получено:"
+    footer:
+      - ""
+      - "<yellow>Нажмите, чтобы открыть"
+    currency: "<gray>- <currency> <white><amount>"
+    item: "<gray>- <white><count></white> <item>"
+    more: "<dark_gray>и ещё <count>"
+    nothing: "<dark_gray>ничего"
+  detail:
+    title: "<gradient:#4f5bd5:#9b4dca>Обмен</gradient> <dark_gray>с <player>"
+    gave: "<red>Отдано <gray>(<player>)"
+    got: "<green>Получено <gray>от <player>"
+    currency: "<currency>: <white><amount>"

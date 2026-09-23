@@ -1,0 +1,92 @@
+name: InTrade
+version: '${version}'
+main: me.spolzer.intrade.InTradePlugin
+api-version: '1.21.7'
+author: Spolzer
+description: Player-to-player trading with items, money, experience and points.
+softdepend: [Vault, PlayerPoints, floodgate, PlaceholderAPI]
+# Downloaded by Paper on first start. Paper bundles its own MySQL driver, which takes precedence;
+# the entry is kept in case it is removed from Paper.
+libraries:
+  - com.zaxxer:HikariCP:7.1.0
+  - com.mysql:mysql-connector-j:9.7.0
+
+commands:
+  trade:
+    description: Trade with another player.
+    usage: /trade <player|accept|deny|toggle|claim|history|reload>
+    aliases: [intrade]
+
+permissions:
+  intrade.*:
+    description: All InTrade permissions.
+    default: op
+    children:
+      intrade.player: true
+      intrade.admin: true
+  intrade.player:
+    description: All player permissions.
+    default: true
+    children:
+      intrade.use: true
+      intrade.sneak: true
+      intrade.toggle: true
+      intrade.history: true
+      intrade.currency.*: true
+  intrade.use:
+    description: Send, accept and deny trade requests, collect trade mail.
+    default: true
+  intrade.sneak:
+    description: Send a request by sneaking and right-clicking a player.
+    default: true
+  intrade.toggle:
+    description: Turn incoming requests on or off.
+    default: true
+  intrade.history:
+    description: View your own trade history.
+    default: true
+  intrade.currency.*:
+    description: Trade any currency.
+    default: true
+    children:
+      intrade.currency.money: true
+      intrade.currency.experience: true
+      intrade.currency.playerpoints: true
+  intrade.currency.money:
+    description: Trade Vault money.
+    default: true
+  intrade.currency.experience:
+    description: Trade experience levels.
+    default: true
+  intrade.currency.playerpoints:
+    description: Trade PlayerPoints.
+    default: true
+  intrade.admin:
+    description: All staff permissions.
+    default: op
+    children:
+      intrade.history.others: true
+      intrade.bypass.*: true
+      intrade.reload: true
+  intrade.history.others:
+    description: View the trade history of any player.
+    default: op
+  intrade.reload:
+    description: Reload the configuration and language files.
+    default: op
+  intrade.bypass.*:
+    description: Ignore all trade limits.
+    default: op
+    children:
+      intrade.bypass.distance: true
+      intrade.bypass.cooldown: true
+      intrade.bypass.blocked: true
+  intrade.bypass.distance:
+    description: Ignore distance and world limits.
+    default: op
+  intrade.bypass.cooldown:
+    description: Ignore the request cooldown.
+    default: op
+  intrade.bypass.blocked:
+    description: Trade items listed in blocked-items.
+    default: op

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
+<title id="title">InTrade</title><desc id="desc">Player-to-player trading for Paper. Items, money, levels and points.</desc>
+<rect width="1200" height="330" rx="20" fill="#17252b"/>
+<rect x="36" y="36" width="1128" height="258" rx="12" fill="none" stroke="#34484d"/>
+<g transform="translate(76 91)" fill="none" stroke="#88c8ac" stroke-width="10" stroke-linejoin="round">
+<path d="M0 33h120l-30-30M120 33 90 63M120 116H0l30-30M0 116l30 30"/>
+</g>
+<text x="253" y="145" fill="#f2eee4" font-family="Segoe UI,Arial,sans-serif" font-size="76" font-weight="700" letter-spacing="-3">InTrade</text>
+<text x="258" y="195" fill="#b7c9c8" font-family="Segoe UI,Arial,sans-serif" font-size="25">Player-to-player trading for Paper</text>
+<text x="258" y="240" fill="#88c8ac" font-family="Segoe UI,Arial,sans-serif" font-size="18" letter-spacing="2">ITEMS / MONEY / LEVELS / POINTS</text>
+<text x="1088" y="78" fill="#b7c9c8" text-anchor="end" font-family="Segoe UI,Arial,sans-serif" font-size="16">BY SPOLZER</text>
+</svg>

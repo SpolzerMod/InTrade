@@ -1,0 +1,193 @@
+# InTrade, English. Formatting uses MiniMessage: https://docs.advntr.dev/minimessage/format.html
+
+prefix: "<gradient:#7aa2f7:#bb9af7><bold>InTrade</bold></gradient> <dark_gray>»</dark_gray> "
+
+currency:
+  money: "<gold>Coins</gold>"
+  experience: "<green>Experience levels</green>"
+  playerpoints: "<light_purple>Points</light_purple>"
+
+menu:
+  title: "<gradient:#4f5bd5:#9b4dca>Trade</gradient> <dark_gray>with <partner>"
+  head:
+    own: "<aqua>You <gray>(<player>)"
+    own-lore:
+      - "<gray>Your offer is on the left"
+    partner: "<light_purple><player>"
+    partner-lore:
+      - "<gray>Their offer is on the right"
+  cancel:
+    name: "<red>Cancel trade"
+    lore:
+      - "<gray>All items return to their owners."
+  help:
+    name: "<yellow>How to trade"
+    lore:
+      - "<gray>Click an item in your inventory to add it."
+      - "<gray>Left click adds the stack, right click adds one."
+      - "<gray>Click your offered item to take it back."
+      - "<gray>Currency: left click to set, right click to clear."
+      - "<gray>Right click the partner's shulker box or bundle to see inside."
+      - ""
+      - "<dark_gray>Any change resets both players' ready state"
+      - "<dark_gray>and locks the button for a few seconds."
+  changed:
+    - "<yellow>Just changed, please check!"
+  removed:
+    name: "<red>Removed: <count> <item>"
+    lore:
+      - "<gray>Your partner removed this item."
+  currency:
+    own:
+      name: "<currency>: <white><amount>"
+      empty: "<currency>: <dark_gray>none"
+      lore:
+        - "<gray>Balance: <white><balance>"
+        - ""
+        - "<yellow>Left click<gray> to set the amount"
+        - "<yellow>Right click<gray> to clear"
+    partner:
+      name: "<currency>: <white><amount>"
+      empty: "<currency>: <dark_gray>none"
+      lore:
+        - "<gray>Offered by your partner."
+    changed:
+      - "<yellow>The amount has just changed!"
+    locked:
+      name: "<currency>: <dark_gray>unavailable"
+      lore:
+        - "<gray>You are not allowed to trade this currency."
+  status:
+    ready: "<green><player> is ready"
+    not-ready: "<red><player> is not ready"
+    input: "<yellow><player> is entering an amount..."
+    preview: "<yellow><player> is viewing contents"
+  ready:
+    idle:
+      name: "<green><bold>Ready"
+      lore:
+        - "<gray>Click once you have checked everything."
+        - "<gray>The trade starts when both players are ready."
+    waiting:
+      name: "<yellow>Waiting for <player>..."
+      lore:
+        - "<gray>Click to cancel your ready state."
+    countdown:
+      name: "<green><bold>Trading in <seconds>"
+      lore:
+        - "<gray>Click to stop."
+    locked:
+      name: "<gold>Please wait <seconds>s"
+      lore:
+        - "<gray>The offer has changed, please check it again."
+    empty:
+      name: "<dark_gray>Nothing to trade"
+      lore:
+        - "<gray>Add an item or an amount first."
+
+preview:
+  title: "<dark_gray>Contents: <item>"
+
+prompt:
+  title: "How much <currency>?"
+  balance: "<gray>Balance: <white><balance>"
+  hint: "<dark_gray>Enter an amount, for example 1500, 2.5k or 1m. Leave it empty or enter 0 to clear."
+  retry: "<red>Could not read the number, please try again."
+  label: "Amount"
+  confirm: "<green>Confirm"
+  all: "<gold>All (<balance>)"
+  cancel: "<gray>Cancel"
+  invalid: "<red>\"<input>\" is not a number."
+  bedrock-label: "Amount (balance: <balance>)"
+  bedrock-label-retry: "Not a number. Amount (balance: <balance>)"
+
+request:
+  form:
+    title: "Trade request"
+    content: "<player> wants to trade with you."
+    accept: "Accept"
+    deny: "Deny"
+  self: "<red>You cannot trade with yourself."
+  sent: "<gray>Trade request sent to <white><player></white>. It expires in <seconds>s."
+  received: "<white><player></white> <gray>wants to trade.</gray> <accept> <deny>"
+  accept-button: "<hover:show_text:'<gray>Open a trade with <player>'><green>[Accept]</green></hover>"
+  deny-button: "<hover:show_text:'<gray>Decline the request'><red>[Deny]</red></hover>"
+  already-sent: "<gray>You have already sent a request to <white><player></white>. Please wait for an answer."
+  cooldown: "<red>You can send another request in <seconds>s."
+  target-muted: "<white><player></white> <gray>is not accepting trade requests."
+  target-no-permission: "<white><player></white> <gray>is not allowed to trade."
+  none: "<gray>You have no pending requests."
+  none-from: "<gray>No request from <white><player></white>."
+  denied: "<gray>You declined the request from <white><player></white>."
+  denied-by: "<white><player></white> <red>declined your request."
+  expired: "<gray>Your request to <white><player></white> has expired."
+  you-busy: "<red>Finish your current trade first."
+  target-busy: "<white><player></white> <gray>is already trading."
+  world-disabled: "<red>Trading is disabled in this world."
+  other-world: "<white><player></white> <red>is in another world."
+  too-far: "<white><player></white> <red>is too far away (maximum <distance> blocks)."
+
+trade:
+  blocked-item: "<red><white><item></white> cannot be traded."
+  offer-full: "<red>Your offer has no free slots."
+  inventory-full: "<red>Your inventory is full."
+  not-enough-own: "<red>Not enough funds: <amount> needed, <balance> available."
+  completed: "<green>Trade with <white><player></white> completed."
+  cancelled:
+    by: "<white><player></white> <red>cancelled the trade."
+    left: "<white><player></white> <red>left the server, trade cancelled."
+    died: "<white><player></white> <red>died, trade cancelled."
+    blocked: "<red>Could not open the trade window for <player>."
+  failed:
+    not-enough: "<white><player></white> <red>does not have enough funds. Trade stopped."
+    no-space: "<white><player></white> <red>does not have enough inventory space. Trade stopped."
+    deposit: "<white><player></white> <red>cannot receive this amount. Trade stopped, all balances are restored."
+
+mail:
+  saved: "<yellow>Your trade items are safe and will be returned after you respawn. If they are not, use <white>/trade claim</white>."
+  stored: "<yellow>Some items did not fit. Use <white>/trade claim</white> to collect them."
+  delivered: "<green>Received <count> stack(s) from trade mail."
+  partial: "<yellow><count> more stack(s) are waiting. Free up some space and use <white>/trade claim</white>."
+  empty: "<gray>Your trade mail is empty."
+
+command:
+  help: "<gray><white>/trade <player></white> - offer a trade<newline><white>/trade accept</white>, <white>/trade deny</white> - accept or decline a request<newline><white>/trade history</white> - trade history<newline><white>/trade toggle</white> - turn incoming requests on or off<newline><white>/trade claim</white> - collect items that did not fit<newline>You can also sneak and right click a player to send a request."
+  toggle-on: "<green>Incoming trade requests are enabled."
+  toggle-off: "<gray>Incoming trade requests are disabled."
+  reloaded: "<green>Configuration and language files reloaded."
+  player-not-found: "<red>Player <white><player></white> not found."
+  players-only: "<red>This command is for players only."
+  no-permission: "<red>You do not have permission to do this."
+
+history:
+  title: "<gradient:#4f5bd5:#9b4dca>History</gradient> <dark_gray><player>, page <page>"
+  previous: "<yellow>Previous page"
+  next: "<yellow>Next page"
+  back: "<yellow>Back to list"
+  info: "<yellow>Trade history"
+  empty: "<gray>No trades yet"
+  info-lore:
+    - "<gray>Newest first"
+  disabled: "<red>Trade history is disabled on this server."
+  entry:
+    name: "<light_purple><player>"
+    header:
+      - "<dark_gray><date>"
+      - ""
+    gave:
+      - "<red>Given:"
+    got:
+      - ""
+      - "<green>Received:"
+    footer:
+      - ""
+      - "<yellow>Click to open"
+    currency: "<gray>- <currency> <white><amount>"
+    item: "<gray>- <white><count></white> <item>"
+    more: "<dark_gray>and <count> more"
+    nothing: "<dark_gray>nothing"
+  detail:
+    title: "<gradient:#4f5bd5:#9b4dca>Trade</gradient> <dark_gray>with <player>"
+    gave: "<red>Given <gray>(<player>)"
+    got: "<green>Received <gray>from <player>"
+    currency: "<currency>: <white><amount>"
