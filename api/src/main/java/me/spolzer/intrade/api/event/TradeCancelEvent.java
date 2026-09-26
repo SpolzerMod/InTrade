@@ -9,7 +9,16 @@ import org.jetbrains.annotations.NotNull;
 public final class TradeCancelEvent extends Event {
     private static final HandlerList HANDLERS = new HandlerList();
 
-    public enum Reason { CANCELLED, LEFT, DIED, SHUTDOWN }
+    public enum Reason {
+        /** A player pressed the cancel button or closed the window. */
+        CANCELLED,
+        /** A player left the server. */
+        LEFT,
+        /** A player died. Their offer is kept in trade mail. */
+        DIED,
+        /** The server stopped or InTrade was disabled. */
+        SHUTDOWN
+    }
 
     private final Player first;
     private final Player second;

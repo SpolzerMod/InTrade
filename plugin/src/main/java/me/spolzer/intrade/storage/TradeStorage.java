@@ -3,6 +3,7 @@ package me.spolzer.intrade.storage;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.io.File;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -113,20 +114,23 @@ public final class TradeStorage {
         this.settings = settings;
         this.file = file;
         this.logger = logger;
-        this.server = settings.serverId;
+        this.server = settings.serverId();
     }
 
     public int open() throws SQLException {
         HikariConfig config = new HikariConfig();
         config.setPoolName("InTrade");
-        if (settings.mysql) {
-            config.setJdbcUrl("jdbc:mysql://" + settings.host + ":" + settings.port + "/" + settings.name);
+        if (settings.mysql()) {
+            config.setJdbcUrl("jdbc:mysql://" + settings.host() + ":" + settings.port() + "/" + settings.name());
             config.setDriverClassName("com.mysql.cj.jdbc.Driver");
-            config.setUsername(settings.user);
-            config.setPassword(settings.password);
-            config.setMaximumPoolSize(settings.poolSize);
-            settings.properties.forEach(config::addDataSourceProperty);
-            reader = Executors.newFixedThreadPool(settings.poolSize - 1, task -> daemon(task, "InTrade-Storage-Read"));
+            config.setUsername(settings.user());
+            config.setPassword(settings.password());
+            config.setMaximumPoolSize(settings.poolSize());
+            // Startup waits for the database, so an unreachable server should fail fast
+            config.setConnectionTimeout(TimeUnit.SECONDS.toMillis(10));
+            settings.properties().forEach(config::addDataSourceProperty);
+            // Reads only wait for the network, the pool size limits how many run at once
+            reader = Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("InTrade-Storage-Read-", 0).factory());
         } else {
             config.setJdbcUrl("jdbc:sqlite:" + file.getAbsolutePath());
             config.setDriverClassName("org.sqlite.JDBC");
@@ -137,8 +141,8 @@ public final class TradeStorage {
 
         try (Connection c = pool.getConnection()) {
             try (Statement st = c.createStatement()) {
-                if (!settings.mysql) st.execute("PRAGMA journal_mode=WAL");
-                for (String sql : settings.mysql ? MYSQL_SCHEMA : SQLITE_SCHEMA) st.execute(sql);
+                if (!settings.mysql()) st.execute("PRAGMA journal_mode=WAL");
+                for (String sql : settings.mysql() ? MYSQL_SCHEMA : SQLITE_SCHEMA) st.execute(sql);
             }
             return transaction(c, () -> recoverEscrow(c));
         }
@@ -188,7 +192,7 @@ public final class TradeStorage {
             return;
         }
         byte[] data = ItemStack.serializeItemsAsBytes(items);
-        String upsert = settings.mysql
+        String upsert = settings.mysql()
                 ? "INSERT INTO intrade_escrow (server, owner, items) VALUES (?, ?, ?)"
                         + " ON DUPLICATE KEY UPDATE items = VALUES(items)"
                 : "INSERT INTO intrade_escrow (server, owner, items) VALUES (?, ?, ?)"
@@ -249,7 +253,7 @@ public final class TradeStorage {
     public CompletableFuture<Void> saveTrade(TradeRecord record, boolean history) {
         byte[] aItems = ItemStack.serializeItemsAsBytes(record.aItems());
         byte[] bItems = ItemStack.serializeItemsAsBytes(record.bItems());
-        String count = settings.mysql
+        String count = settings.mysql()
                 ? "INSERT INTO intrade_stats (uuid, name, trades) VALUES (?, ?, 1)"
                         + " ON DUPLICATE KEY UPDATE trades = trades + 1, name = VALUES(name)"
                 : "INSERT INTO intrade_stats (uuid, name, trades) VALUES (?, ?, 1)"
@@ -321,8 +325,9 @@ public final class TradeStorage {
         });
     }
 
+    // On the writer thread, so the result includes trades that are still queued for saving
     public CompletableFuture<Integer> tradeCount(UUID player) {
-        return query(reader, "Could not count trades of " + player, c -> {
+        return query(writer, "Could not count trades of " + player, c -> {
             try (PreparedStatement ps = c.prepareStatement("SELECT trades FROM intrade_stats WHERE uuid = ?")) {
                 ps.setString(1, player.toString());
                 try (ResultSet rs = ps.executeQuery()) {
@@ -361,21 +366,22 @@ public final class TradeStorage {
         return Arrays.asList(ItemStack.deserializeItemsFromBytes(data));
     }
 
-    private static String writeCurrencies(Map<String, Double> currencies) {
+    // "money=1500.50;experience=30"
+    private static String writeCurrencies(Map<String, BigDecimal> currencies) {
         StringBuilder out = new StringBuilder();
         currencies.forEach((id, amount) -> {
             if (out.length() > 0) out.append(';');
-            out.append(id).append('=').append(amount);
+            out.append(id).append('=').append(amount.toPlainString());
         });
         return out.toString();
     }
 
-    private static Map<String, Double> readCurrencies(String text) {
-        Map<String, Double> currencies = new LinkedHashMap<>();
+    private static Map<String, BigDecimal> readCurrencies(String text) {
+        Map<String, BigDecimal> currencies = new LinkedHashMap<>();
         if (text == null || text.isEmpty()) return currencies;
         for (String entry : text.split(";")) {
             int eq = entry.indexOf('=');
-            if (eq > 0) currencies.put(entry.substring(0, eq), Double.parseDouble(entry.substring(eq + 1)));
+            if (eq > 0) currencies.put(entry.substring(0, eq), new BigDecimal(entry.substring(eq + 1)));
         }
         return currencies;
     }

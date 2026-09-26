@@ -155,6 +155,7 @@ command:
   toggle-on: "<green>Входящие запросы на обмен включены."
   toggle-off: "<gray>Входящие запросы на обмен выключены."
   reloaded: "<green>Конфигурация и тексты перезагружены."
+  reload-failed: "<red>Не удалось перезагрузить конфигурацию. Подробности в консоли сервера."
   player-not-found: "<red>Игрок <white><player></white> не найден."
   players-only: "<red>Команда доступна только игрокам."
   no-permission: "<red>Недостаточно прав."

@@ -1,5 +1,6 @@
 package me.spolzer.intrade.menu;
 
+import java.math.BigDecimal;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -62,10 +63,9 @@ public final class HistoryMenu implements InventoryHolder {
     }
 
     public static void open(InTradePlugin plugin, Player viewer, UUID owner, String ownerName, int page) {
-        plugin.storage().history(owner, page * PAGE_SIZE, PAGE_SIZE + 1).thenAccept(records ->
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (viewer.isOnline()) viewer.openInventory(new HistoryMenu(plugin, viewer, owner, ownerName, page, records).getInventory());
-                }));
+        plugin.storage().history(owner, page * PAGE_SIZE, PAGE_SIZE + 1).thenAcceptAsync(records -> {
+            if (viewer.isOnline()) viewer.openInventory(new HistoryMenu(plugin, viewer, owner, ownerName, page, records).getInventory());
+        }, plugin.mainThread());
     }
 
     private ItemStack entry(TradeRecord record) {
@@ -81,7 +81,7 @@ public final class HistoryMenu implements InventoryHolder {
                 messages.item(viewer, "history.entry.name", Arg.of("player", record.partnerNameOf(owner))), lore);
     }
 
-    private List<Component> summary(List<ItemStack> items, Map<String, Double> currencies) {
+    private List<Component> summary(List<ItemStack> items, Map<String, BigDecimal> currencies) {
         Messages messages = plugin.messages();
         List<Component> lines = new ArrayList<>();
         currencies.forEach((id, amount) -> lines.add(messages.item(viewer, "history.entry.currency",
@@ -97,10 +97,10 @@ public final class HistoryMenu implements InventoryHolder {
         return lines;
     }
 
-    static String format(InTradePlugin plugin, String id, double amount) {
+    // A currency may be disabled since the trade, then the raw number is shown
+    static String format(InTradePlugin plugin, String id, BigDecimal amount) {
         Currency currency = plugin.currencies().byId(id);
-        if (currency != null) return currency.format(amount);
-        return amount == Math.floor(amount) ? Long.toString((long) amount) : Double.toString(amount);
+        return currency != null ? currency.format(amount) : amount.stripTrailingZeros().toPlainString();
     }
 
     public void handleClick(InventoryClickEvent event) {

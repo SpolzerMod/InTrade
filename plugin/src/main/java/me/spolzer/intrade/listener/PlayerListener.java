@@ -57,7 +57,7 @@ public final class PlayerListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onInteract(PlayerInteractEntityEvent event) {
-        if (!plugin.settings().sneakClick || event.getHand() != EquipmentSlot.HAND) return;
+        if (!plugin.settings().sneakClick() || event.getHand() != EquipmentSlot.HAND) return;
         Player player = event.getPlayer();
         if (!player.isSneaking() || !(event.getRightClicked() instanceof Player target) || target.hasMetadata("NPC")) return;
         if (!player.hasPermission("intrade.use") || !player.hasPermission("intrade.sneak")) return;

@@ -6,6 +6,10 @@ import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Called when a request is accepted, before the trade window opens. Cancelling it stops the trade.
+ * {@link #first()} is the player who sent the request.
+ */
 public final class TradeStartEvent extends Event implements Cancellable {
     private static final HandlerList HANDLERS = new HandlerList();
 

@@ -1,5 +1,6 @@
 package me.spolzer.intrade.trade;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -18,9 +19,11 @@ public final class TradeSide {
     final ItemStack[] items = new ItemStack[SLOTS];
     final long[] changedAt = new long[SLOTS];
     final ItemStack[] removed = new ItemStack[SLOTS];
-    final Map<String, Double> currencies = new LinkedHashMap<>();
+    final Map<String, BigDecimal> currencies = new LinkedHashMap<>();
     final Map<String, Long> currencyChangedAt = new HashMap<>();
     boolean ready;
+    // Offer changed since the last save of the player file and escrow
+    boolean dirty;
     Mode mode = Mode.MENU;
     TradeMenu menu;
     PreviewMenu preview;
@@ -31,7 +34,7 @@ public final class TradeSide {
 
     public UUID id() { return player.getUniqueId(); }
     public Mode mode() { return mode; }
-    double currency(String id) { return currencies.getOrDefault(id, 0.0); }
+    BigDecimal currency(String id) { return currencies.getOrDefault(id, BigDecimal.ZERO); }
 
     List<ItemStack> itemList() {
         List<ItemStack> list = new ArrayList<>();
@@ -41,10 +44,10 @@ public final class TradeSide {
         return list;
     }
 
-    Map<String, Double> currencyMap() {
-        Map<String, Double> map = new LinkedHashMap<>();
+    Map<String, BigDecimal> currencyMap() {
+        Map<String, BigDecimal> map = new LinkedHashMap<>();
         currencies.forEach((id, amount) -> {
-            if (amount > 0) map.put(id, amount);
+            if (amount.signum() > 0) map.put(id, amount);
         });
         return map;
     }

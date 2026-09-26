@@ -155,6 +155,7 @@ command:
   toggle-on: "<green>Incoming trade requests are enabled."
   toggle-off: "<gray>Incoming trade requests are disabled."
   reloaded: "<green>Configuration and language files reloaded."
+  reload-failed: "<red>Could not reload the configuration. Details are in the server console."
   player-not-found: "<red>Player <white><player></white> not found."
   players-only: "<red>This command is for players only."
   no-permission: "<red>You do not have permission to do this."

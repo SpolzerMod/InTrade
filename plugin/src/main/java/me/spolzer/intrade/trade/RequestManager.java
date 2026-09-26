@@ -10,6 +10,7 @@ import java.util.UUID;
 import me.spolzer.intrade.InTradePlugin;
 import me.spolzer.intrade.api.event.TradeRequestEvent;
 import me.spolzer.intrade.config.Settings;
+import me.spolzer.intrade.config.TradeSound;
 import me.spolzer.intrade.text.Arg;
 import me.spolzer.intrade.text.Messages;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -56,7 +57,7 @@ public final class RequestManager {
         }
         long now = System.currentTimeMillis();
         Long last = lastSent.get(from.getUniqueId());
-        long cooldown = plugin.settings().requestCooldownMillis;
+        long cooldown = plugin.settings().requestCooldownMillis();
         if (last != null && now - last < cooldown && !from.hasPermission("intrade.bypass.cooldown")) {
             messages().send(from, "request.cooldown", Arg.of("seconds", (cooldown - (now - last) + 999) / 1000));
             return;
@@ -65,7 +66,7 @@ public final class RequestManager {
         Bukkit.getPluginManager().callEvent(event);
         if (event.isCancelled()) return;
 
-        long expire = plugin.settings().requestExpireMillis;
+        long expire = plugin.settings().requestExpireMillis();
         requests.put(from.getUniqueId(), now + expire);
         lastSent.put(from.getUniqueId(), now);
         Arg seconds = Arg.of("seconds", expire / 1000);
@@ -75,7 +76,7 @@ public final class RequestManager {
                         .clickEvent(ClickEvent.runCommand("/trade accept " + from.getName()))),
                 Arg.of("deny", messages().get(to, "request.deny-button", name(from))
                         .clickEvent(ClickEvent.runCommand("/trade deny " + from.getName()))));
-        TradeSession.play(to, "block.note_block.bell", 1.3f);
+        plugin.settings().sound(TradeSound.REQUEST).play(to);
         plugin.prompts().offerRequestForm(to, from,
                 () -> { if (from.isOnline()) accept(to, from); },
                 () -> { if (from.isOnline()) deny(to, from); });
@@ -179,11 +180,11 @@ public final class RequestManager {
         }
         if (actor.hasPermission("intrade.bypass.distance")) return true;
         boolean sameWorld = actor.getWorld().equals(other.getWorld());
-        if (settings.sameWorld && !sameWorld) {
+        if (settings.sameWorld() && !sameWorld) {
             messages().send(actor, "request.other-world", name(other));
             return false;
         }
-        double max = settings.maxDistance;
+        double max = settings.maxDistance();
         if (max > 0 && (!sameWorld || actor.getLocation().distanceSquared(other.getLocation()) > max * max)) {
             messages().send(actor, "request.too-far", name(other), Arg.of("distance", (int) max));
             return false;

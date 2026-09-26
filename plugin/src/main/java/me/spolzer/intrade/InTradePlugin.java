@@ -3,6 +3,7 @@ package me.spolzer.intrade;
 import java.io.File;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import me.spolzer.intrade.api.InTrade;
 import me.spolzer.intrade.command.TradeCommand;
@@ -20,6 +21,7 @@ import me.spolzer.intrade.trade.RequestManager;
 import me.spolzer.intrade.trade.TradeManager;
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.permissions.Permission;
@@ -30,6 +32,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class InTradePlugin extends JavaPlugin {
     private final Currencies currencies = new Currencies();
     private final Messages messages = new Messages(this);
+    private final MainThread mainThread = new MainThread(getLogger());
     private Settings settings;
     private TradeStorage storage;
     private Stats stats;
@@ -40,25 +43,24 @@ public final class InTradePlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        settings = new Settings(getConfig(), getLogger());
-        messages.load(settings.language, settings.defaultLanguage);
-        applyPermissionDefaults();
+        // Read synchronously here: the server does not accept players until all plugins are enabled
+        apply(readConfig());
 
-        storage = new TradeStorage(settings.database, new File(getDataFolder(), "trades.db"), getLogger());
+        storage = new TradeStorage(settings.database(), new File(getDataFolder(), "trades.db"), getLogger());
         try {
             int recovered = storage.open();
             if (recovered > 0) {
                 getLogger().warning("Recovered items from " + recovered + " interrupted trade(s), they will be returned when the owners join");
             }
         } catch (SQLException | RuntimeException e) {
-            String where = settings.database.mysql ? "the MySQL database" : "trades.db";
+            String where = settings.database().mysql() ? "the MySQL database" : "trades.db";
             getLogger().log(Level.SEVERE, "Could not open " + where + ", disabling InTrade", e);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        if (settings.historyEnabled) storage.purgeOlderThan(settings.historyKeepDays);
+        if (settings.historyEnabled()) storage.purgeOlderThan(settings.historyKeepDays());
 
-        stats = new Stats(storage);
+        stats = new Stats(storage, mainThread);
         trades = new TradeManager(this);
         requests = new RequestManager(this);
         prompts = new AmountPrompt(this);
@@ -79,6 +81,7 @@ public final class InTradePlugin extends JavaPlugin {
             for (Player player : Bukkit.getOnlinePlayers()) stats.load(player.getUniqueId());
         });
 
+        Bukkit.getScheduler().runTaskTimer(this, mainThread::drain, 1L, 1L);
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             trades.tick();
             requests.tick();
@@ -90,18 +93,32 @@ public final class InTradePlugin extends JavaPlugin {
     public void onDisable() {
         if (trades != null) trades.shutdown();
         if (storage != null) storage.close();
+        // Callbacks of the operations that close() waited for
+        mainThread.drain();
     }
 
-    public void reload() {
-        reloadConfig();
-        settings = new Settings(getConfig(), getLogger());
-        messages.load(settings.language, settings.defaultLanguage);
-        currencies.load(settings, messages.locale(), getLogger());
-        applyPermissionDefaults();
+    /** Re-reads config.yml and the language files off the main thread, then applies them on it. */
+    public CompletableFuture<Void> reload() {
+        return CompletableFuture.supplyAsync(this::readConfig, task -> getServer().getScheduler().runTaskAsynchronously(this, task))
+                .thenAcceptAsync(loaded -> {
+                    apply(loaded);
+                    currencies.load(settings, messages.locale(), getLogger());
+                }, mainThread);
     }
 
-    private void applyPermissionDefaults() {
-        setDefault("intrade.player", settings.openToEveryone ? PermissionDefault.TRUE : PermissionDefault.FALSE);
+    private record Loaded(Settings settings, Messages.Catalog catalog) {
+    }
+
+    private Loaded readConfig() {
+        YamlConfiguration config = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "config.yml"));
+        Settings loaded = Settings.load(config, getLogger());
+        return new Loaded(loaded, messages.read(loaded.language(), loaded.defaultLanguage()));
+    }
+
+    private void apply(Loaded loaded) {
+        settings = loaded.settings();
+        messages.use(loaded.catalog());
+        setDefault("intrade.player", settings.openToEveryone() ? PermissionDefault.TRUE : PermissionDefault.FALSE);
     }
 
     private void setDefault(String name, PermissionDefault value) {
@@ -112,7 +129,7 @@ public final class InTradePlugin extends JavaPlugin {
     }
 
     public void deliverMail(Player player, boolean reportEmpty) {
-        storage.takeMail(player.getUniqueId()).thenAccept(items -> Bukkit.getScheduler().runTask(this, () -> {
+        storage.takeMail(player.getUniqueId()).thenAcceptAsync(items -> {
             if (items.isEmpty()) {
                 if (reportEmpty) messages.send(player, "mail.empty");
                 return;
@@ -129,7 +146,7 @@ public final class InTradePlugin extends JavaPlugin {
                 messages.send(player, "mail.partial", Arg.of("count", rest.size()));
             }
             if (items.size() > rest.size()) messages.send(player, "mail.delivered", Arg.of("count", items.size() - rest.size()));
-        }));
+        }, mainThread);
     }
 
     public Settings settings() { return settings; }
@@ -140,4 +157,5 @@ public final class InTradePlugin extends JavaPlugin {
     public TradeManager trades() { return trades; }
     public RequestManager requests() { return requests; }
     public AmountPrompt prompts() { return prompts; }
+    public MainThread mainThread() { return mainThread; }
 }

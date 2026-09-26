@@ -1,14 +1,18 @@
 package me.spolzer.intrade.currency;
 
+import java.math.BigDecimal;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 
 public interface Currency {
     String id();
     Material icon();
-    boolean fractional();
-    double balance(Player player);
-    boolean withdraw(Player player, double amount);
-    boolean deposit(Player player, double amount);
-    String format(double amount);
+
+    /** Number of digits after the decimal point that the currency supports. */
+    int scale();
+
+    BigDecimal balance(Player player);
+    boolean withdraw(Player player, BigDecimal amount);
+    boolean deposit(Player player, BigDecimal amount);
+    String format(BigDecimal amount);
 }

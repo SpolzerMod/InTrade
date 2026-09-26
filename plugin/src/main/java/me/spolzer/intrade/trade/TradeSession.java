@@ -1,5 +1,6 @@
 package me.spolzer.intrade.trade;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -9,6 +10,7 @@ import me.spolzer.intrade.api.TradeOffer;
 import me.spolzer.intrade.api.event.TradeCancelEvent;
 import me.spolzer.intrade.api.event.TradeCompleteEvent;
 import me.spolzer.intrade.config.Settings;
+import me.spolzer.intrade.config.TradeSound;
 import me.spolzer.intrade.currency.Currencies;
 import me.spolzer.intrade.currency.Currency;
 import me.spolzer.intrade.storage.TradeRecord;
@@ -20,17 +22,6 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 public final class TradeSession {
-    private static final String SOUND_OPEN = "block.chest.open";
-    private static final String SOUND_PUT = "entity.item_frame.add_item";
-    private static final String SOUND_TAKE = "entity.item_frame.remove_item";
-    private static final String SOUND_COINS = "entity.experience_orb.pickup";
-    private static final String SOUND_CHANGED = "block.note_block.pling";
-    private static final String SOUND_READY = "block.note_block.chime";
-    private static final String SOUND_TICK = "block.note_block.hat";
-    private static final String SOUND_ERROR = "block.note_block.bass";
-    private static final String SOUND_CANCEL = "entity.villager.no";
-    private static final String SOUND_DONE = "entity.player.levelup";
-
     private final InTradePlugin plugin;
     private final TradeSide a;
     private final TradeSide b;
@@ -72,7 +63,7 @@ public final class TradeSession {
                 stop(TradeCancelEvent.Reason.CANCELLED, "trade.cancelled.blocked", side, null);
                 return;
             }
-            play(side.player, SOUND_OPEN, 1.2f);
+            sound(TradeSound.OPEN, side.player);
         }
     }
 
@@ -89,6 +80,9 @@ public final class TradeSession {
                 return;
             }
         }
+        for (TradeSide side : List.of(a, b)) {
+            if (side.dirty) persist(side);
+        }
         long now = System.currentTimeMillis();
         if (countdownEnd > 0) {
             if (now >= countdownEnd) {
@@ -98,8 +92,8 @@ public final class TradeSession {
             int seconds = secondsLeft(now);
             if (seconds != lastCountdownSecond) {
                 lastCountdownSecond = seconds;
-                play(a.player, SOUND_TICK, 1.4f);
-                play(b.player, SOUND_TICK, 1.4f);
+                sound(TradeSound.COUNTDOWN, a.player);
+                sound(TradeSound.COUNTDOWN, b.player);
             }
         }
         render();
@@ -150,7 +144,7 @@ public final class TradeSession {
         }
         int remaining = source.getAmount() - moved;
         from.setItem(slot, remaining > 0 ? source.asQuantity(remaining) : null);
-        play(side.player, SOUND_PUT, 1.0f);
+        sound(TradeSound.PUT, side.player);
         changed(side);
     }
 
@@ -173,21 +167,21 @@ public final class TradeSession {
             side.removed[index] = null;
         }
         side.changedAt[index] = System.currentTimeMillis();
-        play(side.player, SOUND_TAKE, 1.0f);
+        sound(TradeSound.TAKE, side.player);
         changed(side);
     }
 
-    void setCurrency(TradeSide side, Currency currency, double amount) {
-        if (amount == side.currency(currency.id())) return;
-        if (amount > 0 && amount > currency.balance(side.player)) {
+    void setCurrency(TradeSide side, Currency currency, BigDecimal amount) {
+        if (amount.compareTo(side.currency(currency.id())) == 0) return;
+        if (amount.signum() > 0 && amount.compareTo(currency.balance(side.player)) > 0) {
             messages().send(side.player, "trade.not-enough-own", currencyArgs(side.player, currency, amount));
             error(side.player);
             return;
         }
-        if (amount > 0) side.currencies.put(currency.id(), amount);
+        if (amount.signum() > 0) side.currencies.put(currency.id(), amount);
         else side.currencies.remove(currency.id());
         side.currencyChangedAt.put(currency.id(), System.currentTimeMillis());
-        play(side.player, SOUND_COINS, 1.2f);
+        sound(TradeSound.CURRENCY, side.player);
         changed(side);
     }
 
@@ -243,16 +237,16 @@ public final class TradeSession {
         long now = System.currentTimeMillis();
         if (side.ready) {
             unready(side);
-            play(side.player, SOUND_ERROR, 1.0f);
+            sound(TradeSound.UNREADY, side.player);
             return;
         }
         if (locked(now) || bothEmpty()) {
             error(side.player);
             return;
         }
-        for (Map.Entry<String, Double> entry : side.currencyMap().entrySet()) {
+        for (Map.Entry<String, BigDecimal> entry : side.currencyMap().entrySet()) {
             Currency currency = currencies().byId(entry.getKey());
-            if (currency == null || currency.balance(side.player) < entry.getValue()) {
+            if (currency == null || currency.balance(side.player).compareTo(entry.getValue()) < 0) {
                 if (currency != null) messages().send(side.player, "trade.not-enough-own", currencyArgs(side.player, currency, entry.getValue()));
                 error(side.player);
                 return;
@@ -260,14 +254,14 @@ public final class TradeSession {
         }
 
         side.ready = true;
-        play(side.player, SOUND_READY, 1.6f);
-        play(other(side).player, SOUND_READY, 1.6f);
+        sound(TradeSound.READY, side.player);
+        sound(TradeSound.READY, other(side).player);
         if (other(side).ready) {
-            if (settings().confirmSeconds == 0) {
+            if (settings().confirmSeconds() == 0) {
                 complete();
                 return;
             }
-            countdownEnd = now + settings().confirmSeconds * 1000L;
+            countdownEnd = now + settings().confirmSeconds() * 1000L;
             lastCountdownSecond = -1;
         }
         render();
@@ -284,9 +278,9 @@ public final class TradeSession {
         a.ready = false;
         b.ready = false;
         countdownEnd = 0;
-        lockUntil = System.currentTimeMillis() + settings().changeLockMillis;
-        persist(side);
-        play(other(side).player, SOUND_CHANGED, 0.7f);
+        lockUntil = System.currentTimeMillis() + settings().changeLockMillis();
+        side.dirty = true;
+        sound(TradeSound.CHANGED, other(side).player);
         render();
     }
 
@@ -322,16 +316,16 @@ public final class TradeSession {
         Arg who = Arg.of("player", cause.player.getName());
         for (TradeSide side : List.of(a, b)) {
             messages().send(side.player, key, who);
-            play(side.player, SOUND_CANCEL, 1.0f);
+            sound(TradeSound.CANCELLED, side.player);
         }
         Bukkit.getPluginManager().callEvent(new TradeCancelEvent(a.player, b.player, cause.player, reason));
     }
 
     private void complete() {
         for (TradeSide side : List.of(a, b)) {
-            for (Map.Entry<String, Double> entry : side.currencyMap().entrySet()) {
+            for (Map.Entry<String, BigDecimal> entry : side.currencyMap().entrySet()) {
                 Currency currency = currencies().byId(entry.getKey());
-                if (currency == null || currency.balance(side.player) < entry.getValue()) {
+                if (currency == null || currency.balance(side.player).compareTo(entry.getValue()) < 0) {
                     fail("trade.failed.not-enough", side);
                     return;
                 }
@@ -353,9 +347,9 @@ public final class TradeSession {
         // in reverse order and the trade stays open.
         List<Runnable> undo = new ArrayList<>();
         for (TradeSide side : List.of(a, b)) {
-            for (Map.Entry<String, Double> entry : side.currencyMap().entrySet()) {
+            for (Map.Entry<String, BigDecimal> entry : side.currencyMap().entrySet()) {
                 Currency currency = currencies().byId(entry.getKey());
-                double amount = entry.getValue();
+                BigDecimal amount = entry.getValue();
                 if (!currency.withdraw(side.player, amount)) {
                     rollback(undo);
                     fail("trade.failed.not-enough", side);
@@ -366,9 +360,9 @@ public final class TradeSession {
         }
         for (TradeSide side : List.of(a, b)) {
             Player receiver = other(side).player;
-            for (Map.Entry<String, Double> entry : side.currencyMap().entrySet()) {
+            for (Map.Entry<String, BigDecimal> entry : side.currencyMap().entrySet()) {
                 Currency currency = currencies().byId(entry.getKey());
-                double amount = entry.getValue();
+                BigDecimal amount = entry.getValue();
                 if (!currency.deposit(receiver, amount)) {
                     rollback(undo);
                     fail("trade.failed.deposit", other(side));
@@ -378,8 +372,8 @@ public final class TradeSession {
             }
         }
 
-        Map<String, Double> aCurrencies = a.currencyMap();
-        Map<String, Double> bCurrencies = b.currencyMap();
+        Map<String, BigDecimal> aCurrencies = a.currencyMap();
+        Map<String, BigDecimal> bCurrencies = b.currencyMap();
         finished = true;
         plugin.trades().remove(this);
         Arrays.fill(a.items, null);
@@ -392,12 +386,12 @@ public final class TradeSession {
 
         plugin.storage().saveTrade(new TradeRecord(System.currentTimeMillis(),
                 a.id(), a.player.getName(), b.id(), b.player.getName(),
-                toB, toA, aCurrencies, bCurrencies), settings().historyEnabled).thenRun(plugin.stats()::refreshTop);
-        plugin.stats().completed(a.id(), b.id());
+                toB, toA, aCurrencies, bCurrencies), settings().historyEnabled())
+                .thenRunAsync(() -> plugin.stats().traded(a.id(), b.id()), plugin.mainThread());
 
         for (TradeSide side : List.of(a, b)) {
             messages().send(side.player, "trade.completed", Arg.of("player", other(side).player.getName()));
-            play(side.player, SOUND_DONE, 1.2f);
+            sound(TradeSound.COMPLETED, side.player);
         }
         Bukkit.getPluginManager().callEvent(new TradeCompleteEvent(a.player, b.player,
                 new TradeOffer(toB, aCurrencies), new TradeOffer(toA, bCurrencies)));
@@ -419,9 +413,12 @@ public final class TradeSession {
         render();
     }
 
+    // Runs from tick(), so fast clicking writes the player file at most four times a second. Until then the
+    // saved player file and escrow both still hold the previous offer, which is safe to restore after a crash.
     // The player file is written here, the escrow row right after on the storage thread. A file and a database
     // row cannot share a transaction, so a crash in the milliseconds between the two can leave them out of step.
     private void persist(TradeSide side) {
+        side.dirty = false;
         side.player.saveData();
         plugin.storage().saveEscrow(side.id(), side.itemList());
     }
@@ -461,7 +458,7 @@ public final class TradeSession {
         }
     }
 
-    private Arg[] currencyArgs(Player owner, Currency currency, double amount) {
+    private Arg[] currencyArgs(Player owner, Currency currency, BigDecimal amount) {
         return new Arg[] {
                 messages().currency(owner, currency.id()),
                 Arg.of("amount", currency.format(amount)),
@@ -469,11 +466,11 @@ public final class TradeSession {
         };
     }
 
-    private static void error(Player player) {
-        play(player, SOUND_ERROR, 0.6f);
+    private void error(Player player) {
+        sound(TradeSound.ERROR, player);
     }
 
-    static void play(Player player, String sound, float pitch) {
-        if (player.isOnline()) player.playSound(player.getLocation(), sound, 0.6f, pitch);
+    private void sound(TradeSound sound, Player player) {
+        settings().sound(sound).play(player);
     }
 }

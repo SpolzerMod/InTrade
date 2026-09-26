@@ -6,6 +6,7 @@ import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
 import org.jetbrains.annotations.NotNull;
 
+/** Called before a trade request is sent. Cancelling it stops the request silently. */
 public final class TradeRequestEvent extends Event implements Cancellable {
     private static final HandlerList HANDLERS = new HandlerList();
 

@@ -11,10 +11,10 @@ import io.papermc.paper.registry.data.dialog.type.DialogType;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import me.spolzer.intrade.InTradePlugin;
@@ -47,22 +47,22 @@ public final class AmountPrompt {
         plugin.getLogger().info("Floodgate found, Bedrock players will use native forms");
     }
 
-    public void ask(Player player, Currency currency, double current, Consumer<Double> result) {
+    public void ask(Player player, Currency currency, BigDecimal current, Consumer<BigDecimal> result) {
         ask(player, currency, current, result, false);
     }
 
-    private void ask(Player player, Currency currency, double current, Consumer<Double> result, boolean retry) {
+    private void ask(Player player, Currency currency, BigDecimal current, Consumer<BigDecimal> result, boolean retry) {
         Messages messages = plugin.messages();
         Arg[] args = {messages.currency(player, currency.id()), Arg.of("balance", currency.format(currency.balance(player)))};
-        String initial = current > 0 ? plain(current, currency.fractional()) : "";
+        String initial = current.signum() > 0 ? plain(current) : "";
 
         Consumer<String> answer = text -> onMain(() -> {
             if (text == null) {
                 result.accept(null);
                 return;
             }
-            double amount = Currencies.parse(text, currency.fractional());
-            if (amount < 0) {
+            BigDecimal amount = Currencies.parse(text, currency.scale());
+            if (amount == null) {
                 messages.send(player, "prompt.invalid", Arg.of("input", text));
                 ask(player, currency, current, result, true);
                 return;
@@ -81,7 +81,7 @@ public final class AmountPrompt {
         body.add(DialogBody.plainMessage(messages.get(player, "prompt.hint", args)));
         if (retry) body.add(DialogBody.plainMessage(messages.get(player, "prompt.retry", args)));
 
-        String all = plain(currency.balance(player), currency.fractional());
+        String all = plain(currency.balance(player));
         DialogActionCallback confirm = (view, audience) -> answer.accept(view.getText("amount"));
         DialogActionCallback everything = (view, audience) -> answer.accept(all);
         DialogActionCallback cancel = (view, audience) -> answer.accept(null);
@@ -136,13 +136,13 @@ public final class AmountPrompt {
         }
     }
 
+    // Dialog callbacks arrive on the main thread, Floodgate form callbacks on a network thread
     private void onMain(Runnable task) {
         if (Bukkit.isPrimaryThread()) task.run();
-        else if (plugin.isEnabled()) Bukkit.getScheduler().runTask(plugin, task);
+        else plugin.mainThread().execute(task);
     }
 
-    private static String plain(double amount, boolean fractional) {
-        if (!fractional || amount == Math.floor(amount)) return Long.toString((long) amount);
-        return String.format(Locale.ROOT, "%.2f", amount);
+    private static String plain(BigDecimal amount) {
+        return amount.stripTrailingZeros().toPlainString();
     }
 }

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Level;
 import me.spolzer.intrade.InTradePlugin;
 import me.spolzer.intrade.menu.HistoryMenu;
 import me.spolzer.intrade.text.Arg;
@@ -36,8 +37,10 @@ public final class TradeCommand implements TabExecutor {
         String action = args[0].toLowerCase(Locale.ROOT);
         if (action.equals("reload")) {
             if (!allowed(sender, "intrade.reload")) return true;
-            plugin.reload();
-            plugin.messages().send(sender, "command.reloaded");
+            plugin.reload().whenCompleteAsync((result, error) -> {
+                if (error != null) plugin.getLogger().log(Level.SEVERE, "Could not reload InTrade", error);
+                plugin.messages().send(sender, error == null ? "command.reloaded" : "command.reload-failed");
+            }, plugin.mainThread());
             return true;
         }
         if (!(sender instanceof Player player)) {
@@ -72,7 +75,7 @@ public final class TradeCommand implements TabExecutor {
     private void history(Player player, String[] args) {
         // Staff can view other players' history without the player permissions
         if (!allowed(player, args.length < 2 ? "intrade.history" : "intrade.history.others")) return;
-        if (!plugin.settings().historyEnabled) {
+        if (!plugin.settings().historyEnabled()) {
             plugin.messages().send(player, "history.disabled");
             return;
         }
@@ -91,7 +94,7 @@ public final class TradeCommand implements TabExecutor {
             HistoryMenu.open(plugin, player, cached.getUniqueId(), cached.getName() != null ? cached.getName() : name, 0);
             return;
         }
-        plugin.storage().findPlayer(name).thenAccept(id -> Bukkit.getScheduler().runTask(plugin, () -> openFound(player, id, name)));
+        plugin.storage().findPlayer(name).thenAcceptAsync(id -> openFound(player, id, name), plugin.mainThread());
     }
 
     private void openFound(Player player, UUID id, String name) {

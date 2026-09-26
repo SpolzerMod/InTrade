@@ -1,5 +1,6 @@
 package me.spolzer.intrade.menu;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -59,10 +60,10 @@ public final class HistoryDetailMenu implements InventoryHolder {
         for (int i = 0; i < items.size() && i < 16; i++) inventory.setItem(i / 4 * 9 + column + i % 4, items.get(i));
     }
 
-    private void currencies(Map<String, Double> amounts, int[] slots) {
+    private void currencies(Map<String, BigDecimal> amounts, int[] slots) {
         Messages messages = plugin.messages();
         int i = 0;
-        for (Map.Entry<String, Double> entry : amounts.entrySet()) {
+        for (Map.Entry<String, BigDecimal> entry : amounts.entrySet()) {
             if (i >= slots.length) break;
             Currency currency = plugin.currencies().byId(entry.getKey());
             inventory.setItem(slots[i++], Icons.icon(currency != null ? currency.icon() : Material.PAPER,

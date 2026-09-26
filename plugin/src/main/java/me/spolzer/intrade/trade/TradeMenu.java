@@ -1,5 +1,6 @@
 package me.spolzer.intrade.trade;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import me.spolzer.intrade.currency.Currency;
@@ -79,7 +80,7 @@ public final class TradeMenu implements InventoryHolder {
     }
 
     void render(long now) {
-        long highlight = session.settings().highlightMillis;
+        long highlight = session.settings().highlightMillis();
         for (int i = 0; i < TradeSide.SLOTS; i++) {
             inventory.setItem(ownSlot(i), side.items[i]);
             inventory.setItem(partnerSlot(i), partnerItem(i, now, highlight));
@@ -131,17 +132,17 @@ public final class TradeMenu implements InventoryHolder {
             return Icons.icon(Material.GRAY_STAINED_GLASS_PANE,
                     messages.item(viewer, "menu.currency.locked.name", name), messages.lore(viewer, "menu.currency.locked.lore"));
         }
-        double amount = side.currency(currency.id());
+        BigDecimal amount = side.currency(currency.id());
         Arg value = Arg.of("amount", currency.format(amount));
         ItemStack icon = Icons.icon(currency.icon(),
-                messages.item(viewer, amount > 0 ? "menu.currency.own.name" : "menu.currency.own.empty", name, value),
+                messages.item(viewer, amount.signum() > 0 ? "menu.currency.own.name" : "menu.currency.own.empty", name, value),
                 messages.lore(viewer, "menu.currency.own.lore", name, value,
                         Arg.of("balance", currency.format(currency.balance(viewer)))));
-        return Icons.glowing(icon, amount > 0);
+        return Icons.glowing(icon, amount.signum() > 0);
     }
 
     private ItemStack partnerCurrency(Currency currency, long now, long highlight) {
-        double amount = partner.currency(currency.id());
+        BigDecimal amount = partner.currency(currency.id());
         Arg name = messages.currency(viewer, currency.id());
         Arg value = Arg.of("amount", currency.format(amount));
         boolean fresh = partner.currencyRecentlyChanged(currency.id(), now, highlight);
@@ -149,8 +150,8 @@ public final class TradeMenu implements InventoryHolder {
         if (fresh) lore.addAll(messages.lore(viewer, "menu.currency.changed"));
         lore.addAll(messages.lore(viewer, "menu.currency.partner.lore", name, value));
         ItemStack icon = Icons.icon(currency.icon(),
-                messages.item(viewer, amount > 0 ? "menu.currency.partner.name" : "menu.currency.partner.empty", name, value), lore);
-        return Icons.glowing(icon, fresh || amount > 0);
+                messages.item(viewer, amount.signum() > 0 ? "menu.currency.partner.name" : "menu.currency.partner.empty", name, value), lore);
+        return Icons.glowing(icon, fresh || amount.signum() > 0);
     }
 
     private ItemStack status(TradeSide who) {
@@ -226,7 +227,7 @@ public final class TradeMenu implements InventoryHolder {
             Currency currency = currencies.get(i);
             if (!session.currencies().allowed(viewer, currency)) return;
             if (left) session.askAmount(side, currency);
-            else session.setCurrency(side, currency, 0);
+            else session.setCurrency(side, currency, BigDecimal.ZERO);
             return;
         }
 

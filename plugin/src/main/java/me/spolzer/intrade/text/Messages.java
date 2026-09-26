@@ -23,21 +23,20 @@ public final class Messages {
 
     private final JavaPlugin plugin;
     private final MiniMessage mini = MiniMessage.miniMessage();
-    private final Map<String, Lang> langs = new HashMap<>();
-    private Lang fallback;
-    private boolean perPlayer;
+    private volatile Catalog catalog;
 
     public Messages(JavaPlugin plugin) {
         this.plugin = plugin;
     }
 
-    public void load(String language, String defaultLanguage) {
+    /** Reads the language files. Does file I/O, so it is called off the main thread on reload. */
+    public Catalog read(String language, String defaultLanguage) {
         File folder = new File(plugin.getDataFolder(), "lang");
         for (String code : BUNDLED) {
             if (!new File(folder, code + ".yml").exists()) plugin.saveResource("lang/" + code + ".yml", false);
         }
 
-        langs.clear();
+        Map<String, Lang> langs = new HashMap<>();
         YamlConfiguration english = bundled("en");
         File[] files = folder.listFiles((dir, name) -> name.endsWith(".yml"));
         if (files != null) {
@@ -49,13 +48,18 @@ public final class Messages {
             }
         }
 
-        perPlayer = language.equalsIgnoreCase("auto");
+        boolean perPlayer = language.equalsIgnoreCase("auto");
         String forced = perPlayer ? defaultLanguage : language;
-        fallback = find(forced.toLowerCase(Locale.ROOT));
+        Lang fallback = find(langs, forced.toLowerCase(Locale.ROOT));
         if (fallback == null) {
             plugin.getLogger().warning("lang/" + forced + ".yml not found, using en");
             fallback = langs.get("en");
         }
+        return new Catalog(Map.copyOf(langs), fallback, perPlayer);
+    }
+
+    public void use(Catalog catalog) {
+        this.catalog = catalog;
     }
 
     private YamlConfiguration bundled(String code) {
@@ -64,22 +68,23 @@ public final class Messages {
         return YamlConfiguration.loadConfiguration(new InputStreamReader(stream, StandardCharsets.UTF_8));
     }
 
-    private Lang find(String code) {
+    private static Lang find(Map<String, Lang> langs, String code) {
         Lang lang = langs.get(code);
         if (lang == null && code.contains("_")) lang = langs.get(code.substring(0, code.indexOf('_')));
         return lang;
     }
 
     private Lang lang(CommandSender to) {
-        if (perPlayer && to instanceof Player player) {
-            Lang own = find(player.locale().toString().toLowerCase(Locale.ROOT));
+        Catalog current = catalog;
+        if (current.perPlayer() && to instanceof Player player) {
+            Lang own = find(current.langs(), player.locale().toString().toLowerCase(Locale.ROOT));
             if (own != null) return own;
         }
-        return fallback;
+        return current.fallback();
     }
 
     public Locale locale() {
-        return fallback.locale;
+        return catalog.fallback().locale();
     }
 
     private String raw(CommandSender to, String key) {
@@ -128,18 +133,12 @@ public final class Messages {
         return mini.deserialize(input, resolvers.build());
     }
 
-    private static final class Lang {
-        final Locale locale;
-        final YamlConfiguration own;
-        final YamlConfiguration defaults;
-        final YamlConfiguration english;
+    /** Loaded language files, replaced as a whole on reload. */
+    public record Catalog(Map<String, Lang> langs, Lang fallback, boolean perPlayer) {
+    }
 
-        Lang(Locale locale, YamlConfiguration own, YamlConfiguration defaults, YamlConfiguration english) {
-            this.locale = locale;
-            this.own = own;
-            this.defaults = defaults;
-            this.english = english;
-        }
+    // Keys missing in a translation fall back to the bundled file of that language, then to English
+    public record Lang(Locale locale, YamlConfiguration own, YamlConfiguration defaults, YamlConfiguration english) {
 
         String raw(String key) {
             for (YamlConfiguration source : List.of(own, defaults, english)) {
