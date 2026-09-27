@@ -7,7 +7,7 @@ import java.util.UUID;
  *
  * @param id player UUID
  * @param name last known player name
- * @param trades number of completed trades
+ * @param trades number of counted trades, see {@link InTrade#tradeCount}
  */
 public record TraderStats(UUID id, String name, int trades) {
 }

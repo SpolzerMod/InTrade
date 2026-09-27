@@ -1,6 +1,5 @@
 package me.spolzer.intrade.trade;
 
-import java.util.ArrayList;
 import java.util.List;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -36,9 +35,15 @@ final class Inventories {
         return true;
     }
 
-    static List<ItemStack> give(Player player, List<ItemStack> items) {
-        if (items.isEmpty()) return List.of();
-        return new ArrayList<>(player.getInventory().addItem(items.toArray(new ItemStack[0])).values());
+    /** How many of the item fit into the inventory. */
+    static int room(Player player, ItemStack item) {
+        int max = item.getMaxStackSize();
+        int room = 0;
+        for (ItemStack slot : player.getInventory().getStorageContents()) {
+            if (empty(slot)) room += max;
+            else if (slot.isSimilar(item)) room += Math.max(0, max - slot.getAmount());
+        }
+        return room;
     }
 
     static boolean empty(ItemStack item) {

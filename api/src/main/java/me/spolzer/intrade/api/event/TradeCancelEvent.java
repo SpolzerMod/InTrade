@@ -17,7 +17,11 @@ public final class TradeCancelEvent extends Event {
         /** A player died. Their offer is kept in trade mail. */
         DIED,
         /** The server stopped or InTrade was disabled. */
-        SHUTDOWN
+        SHUTDOWN,
+        /** The trade was open longer than the configured maximum time. */
+        TIMEOUT,
+        /** The players moved too far apart or into a world where trading is disabled. */
+        DISTANCE
     }
 
     private final Player first;
@@ -34,7 +38,7 @@ public final class TradeCancelEvent extends Event {
 
     public Player first() { return first; }
     public Player second() { return second; }
-    /** The player who cancelled, left or died, or null on server shutdown. */
+    /** The player who cancelled, left or died, or null for {@code SHUTDOWN}, {@code TIMEOUT} and {@code DISTANCE}. */
     public Player cause() { return cause; }
     public Reason reason() { return reason; }
 

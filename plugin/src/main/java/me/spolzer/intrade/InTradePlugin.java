@@ -17,6 +17,7 @@ import me.spolzer.intrade.stats.Stats;
 import me.spolzer.intrade.storage.TradeStorage;
 import me.spolzer.intrade.text.Arg;
 import me.spolzer.intrade.text.Messages;
+import me.spolzer.intrade.trade.OfferMark;
 import me.spolzer.intrade.trade.RequestManager;
 import me.spolzer.intrade.trade.TradeManager;
 import org.bukkit.Bukkit;
@@ -33,6 +34,7 @@ public final class InTradePlugin extends JavaPlugin {
     private final Currencies currencies = new Currencies();
     private final Messages messages = new Messages(this);
     private final MainThread mainThread = new MainThread(getLogger());
+    private final OfferMark offerMark = new OfferMark(this);
     private Settings settings;
     private TradeStorage storage;
     private Stats stats;
@@ -52,6 +54,10 @@ public final class InTradePlugin extends JavaPlugin {
             if (recovered > 0) {
                 getLogger().warning("Recovered items from " + recovered + " interrupted trade(s), they will be returned when the owners join");
             }
+        } catch (IllegalStateException e) {
+            getLogger().severe(e.getMessage() + ". Disabling InTrade");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
         } catch (SQLException | RuntimeException e) {
             String where = settings.database().mysql() ? "the MySQL database" : "trades.db";
             getLogger().log(Level.SEVERE, "Could not open " + where + ", disabling InTrade", e);
@@ -59,6 +65,7 @@ public final class InTradePlugin extends JavaPlugin {
             return;
         }
         if (settings.historyEnabled()) storage.purgeOlderThan(settings.historyKeepDays());
+        storage.purgePairs(settings.pairCooldownMillis());
 
         stats = new Stats(storage, mainThread);
         trades = new TradeManager(this);
@@ -78,7 +85,10 @@ public final class InTradePlugin extends JavaPlugin {
             currencies.load(settings, messages.locale(), getLogger());
             prompts.hookFloodgate();
             if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) new TradePlaceholders(this).register();
-            for (Player player : Bukkit.getOnlinePlayers()) stats.load(player.getUniqueId());
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                stats.load(player.getUniqueId());
+                recoverOffer(player);
+            }
         });
 
         Bukkit.getScheduler().runTaskTimer(this, mainThread::drain, 1L, 1L);
@@ -92,8 +102,8 @@ public final class InTradePlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         if (trades != null) trades.shutdown();
-        if (storage != null) storage.close();
-        // Callbacks of the operations that close() waited for
+        // Also runs the main thread callbacks of the last operations, such as items of a trade that just completed
+        if (storage != null) storage.close(mainThread);
         mainThread.drain();
     }
 
@@ -103,6 +113,7 @@ public final class InTradePlugin extends JavaPlugin {
                 .thenAcceptAsync(loaded -> {
                     apply(loaded);
                     currencies.load(settings, messages.locale(), getLogger());
+                    trades.currenciesReloaded();
                 }, mainThread);
     }
 
@@ -126,6 +137,20 @@ public final class InTradePlugin extends JavaPlugin {
         if (permission == null) return;
         if (permission.getDefault() != value) permission.setDefault(value);
         for (String child : permission.getChildren().keySet()) setDefault(child, value);
+    }
+
+    /**
+     * Returns the offer of a trade that was interrupted by a crash. Only the offer with the version stored in the
+     * player file is returned, other rows of the player are deleted. Called on join, before the mail is delivered.
+     */
+    public void recoverOffer(Player player) {
+        long version = offerMark.get(player);
+        storage.offerToMail(player.getUniqueId(), version).thenAcceptAsync(found -> {
+            if (found) getLogger().info("Returned the items of an interrupted trade of " + player.getName() + " to trade mail");
+            if (version != 0 && player.isOnline() && !trades.inTrade(player) && offerMark.get(player) == version) {
+                offerMark.clear(player);
+            }
+        }, mainThread);
     }
 
     public void deliverMail(Player player, boolean reportEmpty) {
@@ -158,4 +183,5 @@ public final class InTradePlugin extends JavaPlugin {
     public RequestManager requests() { return requests; }
     public AmountPrompt prompts() { return prompts; }
     public MainThread mainThread() { return mainThread; }
+    public OfferMark offerMark() { return offerMark; }
 }

@@ -21,6 +21,19 @@ dependencies {
     latestApi("me.clip:placeholderapi:2.11.6") { isTransitive = false }
     latestApi("com.zaxxer:HikariCP:7.1.0") { isTransitive = false }
     latestApi("org.jetbrains:annotations:26.0.2")
+
+    // MockBukkit implements the newest 1.21 API, so the tests run against it instead of 1.21.7
+    testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
+    testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v1.21:4.116.3")
+    testImplementation(platform("org.junit:junit-bom:6.0.3"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("com.zaxxer:HikariCP:7.1.0")
+    testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 // The plugin is compiled against 1.21.7, the oldest supported version.

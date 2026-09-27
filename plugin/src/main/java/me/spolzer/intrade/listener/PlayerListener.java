@@ -41,6 +41,8 @@ public final class PlayerListener implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         plugin.stats().load(player.getUniqueId());
+        // Queued before the mail is taken, so recovered items are delivered together with it
+        plugin.recoverOffer(player);
         deliverLater(player, 40L);
     }
 

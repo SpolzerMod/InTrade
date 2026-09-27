@@ -21,9 +21,9 @@ requests:
   cooldown-seconds: 5
   # Allow sending a request by sneaking and right-clicking a player.
   sneak-click: true
-  # Maximum distance between players. 0 disables the check.
+  # Maximum distance between players, also checked while the trade is open. 0 disables the check.
   max-distance: 0
-  # Allow trades only between players in the same world.
+  # Allow trades only between players in the same world, also checked while the trade is open.
   same-world: false
 
 safety:
@@ -33,6 +33,8 @@ safety:
   highlight-seconds: 6
   # Countdown after both players are ready. Any change stops it.
   confirm-seconds: 3
+  # Maximum duration of a trade, after which it is cancelled. 0 disables the limit.
+  max-trade-seconds: 300
 
 currencies:
   # Requires Vault and an economy plugin.
@@ -71,6 +73,11 @@ blocked-items: []
 # Worlds where trades cannot be started.
 disabled-worlds: []
 
+stats:
+  # A trade between the same two players counts towards trade counts and the top list
+  # at most once in this time, so the top cannot be raised by many small trades. 0 counts every trade.
+  pair-cooldown-minutes: 60
+
 history:
   enabled: true
   # Trades older than this are deleted on startup. 0 keeps all trades.
@@ -85,6 +92,7 @@ storage:
   # Unique name of this server. Only needed when several servers use the same MySQL database.
   # Items in open trade windows and /trade claim mail are kept per server,
   # trade history and trade counts are shared.
+  # InTrade does not start if another running server already uses the same name.
   server-id: main
   mysql:
     host: localhost

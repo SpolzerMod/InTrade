@@ -16,16 +16,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import me.spolzer.intrade.api.TraderStats;
 import me.spolzer.intrade.config.Settings;
 import org.bukkit.inventory.ItemStack;
 
-// All writes run on a single thread to keep escrow and mail updates in order
+// All writes run on a single thread to keep offer and mail updates in order
 public final class TradeStorage {
     private static final List<String> SQLITE_SCHEMA = List.of("""
             CREATE TABLE IF NOT EXISTS intrade_trades (
@@ -43,11 +45,12 @@ public final class TradeStorage {
             "CREATE INDEX IF NOT EXISTS intrade_trades_a ON intrade_trades (a_uuid, time)",
             "CREATE INDEX IF NOT EXISTS intrade_trades_b ON intrade_trades (b_uuid, time)",
             """
-            CREATE TABLE IF NOT EXISTS intrade_escrow (
+            CREATE TABLE IF NOT EXISTS intrade_offers (
                 server TEXT NOT NULL,
                 owner TEXT NOT NULL,
+                version INTEGER NOT NULL,
                 items BLOB NOT NULL,
-                PRIMARY KEY (server, owner)
+                PRIMARY KEY (server, owner, version)
             )""",
             """
             CREATE TABLE IF NOT EXISTS intrade_mail (
@@ -64,7 +67,14 @@ public final class TradeStorage {
                 name TEXT NOT NULL,
                 trades INTEGER NOT NULL
             )""",
-            "CREATE INDEX IF NOT EXISTS intrade_stats_trades ON intrade_stats (trades DESC)");
+            "CREATE INDEX IF NOT EXISTS intrade_stats_trades ON intrade_stats (trades DESC)",
+            """
+            CREATE TABLE IF NOT EXISTS intrade_pairs (
+                a TEXT NOT NULL,
+                b TEXT NOT NULL,
+                time INTEGER NOT NULL,
+                PRIMARY KEY (a, b)
+            )""");
 
     // MEDIUMBLOB: BLOB is limited to 64 KB, not enough for 16 filled shulker boxes
     private static final List<String> MYSQL_SCHEMA = List.of("""
@@ -82,11 +92,12 @@ public final class TradeStorage {
                 INDEX intrade_trades_a (a_uuid, time),
                 INDEX intrade_trades_b (b_uuid, time)
             )""", """
-            CREATE TABLE IF NOT EXISTS intrade_escrow (
+            CREATE TABLE IF NOT EXISTS intrade_offers (
                 server VARCHAR(64) NOT NULL,
                 owner CHAR(36) NOT NULL,
+                version BIGINT NOT NULL,
                 items MEDIUMBLOB NOT NULL,
-                PRIMARY KEY (server, owner)
+                PRIMARY KEY (server, owner, version)
             )""", """
             CREATE TABLE IF NOT EXISTS intrade_mail (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -100,7 +111,15 @@ public final class TradeStorage {
                 name VARCHAR(64) NOT NULL,
                 trades INT NOT NULL,
                 INDEX intrade_stats_trades (trades)
-            )""");
+            )""", """
+            CREATE TABLE IF NOT EXISTS intrade_pairs (
+                a CHAR(36) NOT NULL,
+                b CHAR(36) NOT NULL,
+                time BIGINT NOT NULL,
+                PRIMARY KEY (a, b)
+            )""", ServerLock.SCHEMA);
+
+    private static final long HEARTBEAT_MILLIS = TimeUnit.SECONDS.toMillis(5);
 
     private final Settings.Database settings;
     private final File file;
@@ -109,6 +128,7 @@ public final class TradeStorage {
     private final ExecutorService writer = Executors.newSingleThreadExecutor(task -> daemon(task, "InTrade-Storage"));
     private ExecutorService reader;
     private HikariDataSource pool;
+    private ServerLock lock;
 
     public TradeStorage(Settings.Database settings, File file, Logger logger) {
         this.settings = settings;
@@ -117,6 +137,12 @@ public final class TradeStorage {
         this.server = settings.serverId();
     }
 
+    /**
+     * Connects, creates the tables and, with MySQL, claims the server id.
+     *
+     * @return number of offers recovered from the table of InTrade 2.0
+     * @throws IllegalStateException if another running server uses the same server id
+     */
     public int open() throws SQLException {
         HikariConfig config = new HikariConfig();
         config.setPoolName("InTrade");
@@ -144,12 +170,22 @@ public final class TradeStorage {
                 if (!settings.mysql()) st.execute("PRAGMA journal_mode=WAL");
                 for (String sql : settings.mysql() ? MYSQL_SCHEMA : SQLITE_SCHEMA) st.execute(sql);
             }
-            return transaction(c, () -> recoverEscrow(c));
+        }
+        if (settings.mysql()) {
+            lock = new ServerLock(pool, server, HEARTBEAT_MILLIS, logger);
+            lock.claim();
+        }
+        try (Connection c = pool.getConnection()) {
+            return transaction(c, () -> recoverLegacy(c));
         }
     }
 
-    // Only rows of this server: other servers sharing the database may have trades in progress
-    private int recoverEscrow(Connection c) throws SQLException {
+    // InTrade 2.0 kept one offer per player without a version. Such rows are only left by a crash and are
+    // returned as mail, as 2.0 did on startup.
+    private int recoverLegacy(Connection c) throws SQLException {
+        try (ResultSet tables = c.getMetaData().getTables(c.getCatalog(), null, "intrade_escrow", null)) {
+            if (!tables.next()) return 0;
+        }
         int recovered;
         try (PreparedStatement copy = c.prepareStatement(
                 "INSERT INTO intrade_mail (server, owner, items) SELECT server, owner, items FROM intrade_escrow WHERE server = ?")) {
@@ -163,15 +199,35 @@ public final class TradeStorage {
         return recovered;
     }
 
-    public void close() {
-        writer.shutdown();
-        if (reader != null && reader != writer) reader.shutdown();
+    /**
+     * Waits for pending writes and closes the connections.
+     *
+     * @param mainThread main thread callbacks of finished operations, which may start new writes
+     */
+    public void close(MainThreadQueue mainThread) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         try {
-            if (!writer.awaitTermination(10, TimeUnit.SECONDS)) logger.warning("Timed out waiting for pending database writes");
+            do {
+                mainThread.drain();
+                writer.submit(() -> { }).get(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
+            } while (!mainThread.isEmpty());
+        } catch (TimeoutException e) {
+            logger.warning("Timed out waiting for pending database writes");
+        } catch (ExecutionException e) {
+            logger.log(Level.WARNING, "Could not wait for pending database writes", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        writer.shutdown();
+        if (reader != null && reader != writer) reader.shutdown();
+        if (lock != null) lock.release();
         if (pool != null) pool.close();
+    }
+
+    /** Main thread callbacks, as seen by {@link #close}. */
+    public interface MainThreadQueue {
+        void drain();
+        boolean isEmpty();
     }
 
     public void purgeOlderThan(int days) {
@@ -186,35 +242,103 @@ public final class TradeStorage {
         });
     }
 
-    public void saveEscrow(UUID owner, List<ItemStack> items) {
-        if (items.isEmpty()) {
-            clearEscrow(owner);
-            return;
-        }
-        byte[] data = ItemStack.serializeItemsAsBytes(items);
-        String upsert = settings.mysql()
-                ? "INSERT INTO intrade_escrow (server, owner, items) VALUES (?, ?, ?)"
-                        + " ON DUPLICATE KEY UPDATE items = VALUES(items)"
-                : "INSERT INTO intrade_escrow (server, owner, items) VALUES (?, ?, ?)"
-                        + " ON CONFLICT (server, owner) DO UPDATE SET items = excluded.items";
-        write("Could not save escrow for " + owner + ", the offer is not protected against a crash", c -> {
-            try (PreparedStatement ps = c.prepareStatement(upsert)) {
-                ps.setString(1, server);
-                ps.setString(2, owner.toString());
-                ps.setBytes(3, data);
+    public void purgePairs(long cooldownMillis) {
+        long cutoff = System.currentTimeMillis() - cooldownMillis;
+        write("Could not purge old trade pairs", c -> {
+            try (PreparedStatement ps = c.prepareStatement("DELETE FROM intrade_pairs WHERE time < ?")) {
+                ps.setLong(1, cutoff);
                 ps.executeUpdate();
             }
         });
     }
 
-    public void clearEscrow(UUID owner) {
-        write("Could not clear escrow for " + owner + ", these items may be returned twice after a restart", c -> {
-            try (PreparedStatement ps = c.prepareStatement("DELETE FROM intrade_escrow WHERE server = ? AND owner = ?")) {
+    // Offers of open trades. Every change of an offer is saved as a new row with a new version before the items
+    // move, and the player file stores the version it matches. After a crash only the row with that version is
+    // returned, so the player file and the database always agree on where the items are.
+
+    /** Saves an offer. The future completes once the row is committed. */
+    public CompletableFuture<Void> saveOffer(UUID owner, long version, List<ItemStack> items) {
+        return saveOffer(owner, version, ItemStack.serializeItemsAsBytes(items));
+    }
+
+    CompletableFuture<Void> saveOffer(UUID owner, long version, byte[] data) {
+        return query(writer, "Could not save the trade offer of " + owner, c -> {
+            upsertOffer(c, owner, version, data);
+            return null;
+        });
+    }
+
+    /**
+     * Replaces the offers of both players in one transaction when a trade completes. Each row then holds what its
+     * owner receives, so a crash after the commit completes the trade and a crash before it cancels the trade.
+     */
+    public CompletableFuture<Void> swapOffers(UUID a, long aVersion, List<ItemStack> toA, UUID b, long bVersion, List<ItemStack> toB) {
+        return swapOffers(a, aVersion, ItemStack.serializeItemsAsBytes(toA), b, bVersion, ItemStack.serializeItemsAsBytes(toB));
+    }
+
+    CompletableFuture<Void> swapOffers(UUID a, long aVersion, byte[] toA, UUID b, long bVersion, byte[] toB) {
+        return query(writer, "Could not save the completed trade of " + a + " and " + b, c -> transaction(c, () -> {
+            upsertOffer(c, a, aVersion, toA);
+            upsertOffer(c, b, bVersion, toB);
+            return null;
+        }));
+    }
+
+    private void upsertOffer(Connection c, UUID owner, long version, byte[] data) throws SQLException {
+        String upsert = settings.mysql()
+                ? "INSERT INTO intrade_offers (server, owner, version, items) VALUES (?, ?, ?, ?)"
+                        + " ON DUPLICATE KEY UPDATE items = VALUES(items)"
+                : "INSERT INTO intrade_offers (server, owner, version, items) VALUES (?, ?, ?, ?)"
+                        + " ON CONFLICT (server, owner, version) DO UPDATE SET items = excluded.items";
+        try (PreparedStatement ps = c.prepareStatement(upsert)) {
+            ps.setString(1, server);
+            ps.setString(2, owner.toString());
+            ps.setLong(3, version);
+            ps.setBytes(4, data);
+            ps.executeUpdate();
+        }
+    }
+
+    /** Deletes the other offers of the player. Only after the player file is saved with this version. */
+    public void dropOffersExcept(UUID owner, long version) {
+        write("Could not delete old trade offers of " + owner, c -> {
+            try (PreparedStatement ps = c.prepareStatement("DELETE FROM intrade_offers WHERE server = ? AND owner = ? AND version <> ?")) {
                 ps.setString(1, server);
                 ps.setString(2, owner.toString());
+                ps.setLong(3, version);
                 ps.executeUpdate();
             }
         });
+    }
+
+    /** Deletes all offers of the player. Only after the player file is saved without a version. */
+    public void clearOffers(UUID owner) {
+        dropOffersExcept(owner, 0);
+    }
+
+    /**
+     * Moves the offer with the given version to trade mail and deletes all other offers of the player, in one
+     * transaction.
+     *
+     * @return whether an offer with this version existed
+     */
+    public CompletableFuture<Boolean> offerToMail(UUID owner, long version) {
+        return query(writer, "Could not move the trade offer of " + owner + " to trade mail", c -> transaction(c, () -> {
+            int moved;
+            try (PreparedStatement copy = c.prepareStatement("INSERT INTO intrade_mail (server, owner, items)"
+                    + " SELECT server, owner, items FROM intrade_offers WHERE server = ? AND owner = ? AND version = ?")) {
+                copy.setString(1, server);
+                copy.setString(2, owner.toString());
+                copy.setLong(3, version);
+                moved = copy.executeUpdate();
+            }
+            try (PreparedStatement delete = c.prepareStatement("DELETE FROM intrade_offers WHERE server = ? AND owner = ?")) {
+                delete.setString(1, server);
+                delete.setString(2, owner.toString());
+                delete.executeUpdate();
+            }
+            return moved > 0;
+        }));
     }
 
     public void addMail(UUID owner, List<ItemStack> items) {
@@ -250,14 +374,15 @@ public final class TradeStorage {
         }));
     }
 
-    public CompletableFuture<Void> saveTrade(TradeRecord record, boolean history) {
+    /**
+     * Saves a completed trade and updates the trade counts.
+     *
+     * @param pairCooldownMillis minimum time between two counted trades of the same two players, 0 counts all
+     * @return whether the trade was counted
+     */
+    public CompletableFuture<Boolean> saveTrade(TradeRecord record, boolean history, long pairCooldownMillis) {
         byte[] aItems = ItemStack.serializeItemsAsBytes(record.aItems());
         byte[] bItems = ItemStack.serializeItemsAsBytes(record.bItems());
-        String count = settings.mysql()
-                ? "INSERT INTO intrade_stats (uuid, name, trades) VALUES (?, ?, 1)"
-                        + " ON DUPLICATE KEY UPDATE trades = trades + 1, name = VALUES(name)"
-                : "INSERT INTO intrade_stats (uuid, name, trades) VALUES (?, ?, 1)"
-                        + " ON CONFLICT (uuid) DO UPDATE SET trades = trades + 1, name = excluded.name";
         return query(writer, "Could not save the trade between " + record.aName() + " and " + record.bName(), c -> transaction(c, () -> {
             if (history) {
                 try (PreparedStatement ps = c.prepareStatement("""
@@ -275,17 +400,54 @@ public final class TradeStorage {
                     ps.executeUpdate();
                 }
             }
-            try (PreparedStatement ps = c.prepareStatement(count)) {
-                ps.setString(1, record.aId().toString());
-                ps.setString(2, record.aName());
-                ps.addBatch();
-                ps.setString(1, record.bId().toString());
-                ps.setString(2, record.bName());
-                ps.addBatch();
-                ps.executeBatch();
-            }
-            return null;
+            return count(c, record.aId(), record.aName(), record.bId(), record.bName(), record.time(), pairCooldownMillis);
         }));
+    }
+
+    CompletableFuture<Boolean> count(UUID a, String aName, UUID b, String bName, long time, long pairCooldownMillis) {
+        return query(writer, "Could not count the trade between " + aName + " and " + bName,
+                c -> transaction(c, () -> count(c, a, aName, b, bName, time, pairCooldownMillis)));
+    }
+
+    // Two players trading back and forth are counted once per cooldown, so the top cannot be raised
+    // with a stream of trades of one dirt block
+    private boolean count(Connection c, UUID a, String aName, UUID b, String bName, long time, long pairCooldownMillis)
+            throws SQLException {
+        if (pairCooldownMillis > 0) {
+            String first = a.compareTo(b) < 0 ? a.toString() : b.toString();
+            String second = a.compareTo(b) < 0 ? b.toString() : a.toString();
+            try (PreparedStatement ps = c.prepareStatement("SELECT time FROM intrade_pairs WHERE a = ? AND b = ?")) {
+                ps.setString(1, first);
+                ps.setString(2, second);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next() && time - rs.getLong(1) < pairCooldownMillis) return false;
+                }
+            }
+            String pair = settings.mysql()
+                    ? "INSERT INTO intrade_pairs (a, b, time) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE time = VALUES(time)"
+                    : "INSERT INTO intrade_pairs (a, b, time) VALUES (?, ?, ?) ON CONFLICT (a, b) DO UPDATE SET time = excluded.time";
+            try (PreparedStatement ps = c.prepareStatement(pair)) {
+                ps.setString(1, first);
+                ps.setString(2, second);
+                ps.setLong(3, time);
+                ps.executeUpdate();
+            }
+        }
+        String count = settings.mysql()
+                ? "INSERT INTO intrade_stats (uuid, name, trades) VALUES (?, ?, 1)"
+                        + " ON DUPLICATE KEY UPDATE trades = trades + 1, name = VALUES(name)"
+                : "INSERT INTO intrade_stats (uuid, name, trades) VALUES (?, ?, 1)"
+                        + " ON CONFLICT (uuid) DO UPDATE SET trades = trades + 1, name = excluded.name";
+        try (PreparedStatement ps = c.prepareStatement(count)) {
+            ps.setString(1, a.toString());
+            ps.setString(2, aName);
+            ps.addBatch();
+            ps.setString(1, b.toString());
+            ps.setString(2, bName);
+            ps.addBatch();
+            ps.executeBatch();
+        }
+        return true;
     }
 
     public CompletableFuture<List<TradeRecord>> history(UUID player, int offset, int limit) {

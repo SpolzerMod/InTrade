@@ -8,7 +8,7 @@ InTrade is a player-to-player trading plugin for Paper servers. Two players put 
 
 It is:
 
-* **safe** - any change resets both confirmations and locks the Ready button for a moment. Items of an open trade are kept in the database and returned after a crash.
+* **safe** - any change resets both confirmations and locks the Ready button for a moment. Every change of an offer is written to the database before the items move, so a crash can neither lose nor duplicate them. Blocked items are also found inside shulker boxes and bundles.
 * **complete** - Vault money, experience levels and PlayerPoints next to 16 item slots per side. Amounts can be typed as `1500`, `2.5k` or `1m`.
 * **transparent** - shulker boxes and bundles in the partner's offer can be opened before confirming, and every trade is kept in the history.
 * **vanilla** - no client mod or resource pack. Bedrock players get native forms through Floodgate.
@@ -47,7 +47,7 @@ Take `api-<version>.jar` from [Releases](../../releases) and add InTrade to `dep
 
 ```kotlin
 dependencies {
-    compileOnly(files("libs/api-2.0.0.jar"))
+    compileOnly(files("libs/api-2.1.0.jar"))
 }
 ```
 
@@ -75,7 +75,7 @@ cd InTrade/
 ./gradlew build
 ```
 
-The plugin jar is in `plugin/build/libs`, the API jar in `api/build/libs`.
+The plugin jar is in `plugin/build/libs`, the API jar in `api/build/libs`. `build` also runs the unit tests (JUnit 6, MockBukkit, SQLite).
 
 The code is compiled against Paper API 1.21.7 with Java 21 bytecode. The `verifyLatestApi` task, which runs as part of `build`, compiles the same sources against Paper API 26.3 to catch removed methods; this is why JDK 25 is needed.
 
@@ -85,7 +85,7 @@ The code is compiled against Paper API 1.21.7 with Java 21 bytecode. The `verify
 * **plugin** - the implementation.
   * `trade` - requests, trade sessions and the trade window
   * `currency` - Vault, experience and PlayerPoints behind one `Currency` interface
-  * `storage` - SQLite / MySQL through HikariCP. Writes go through one thread to keep their order, results return to the main thread through `MainThread`
+  * `storage` - SQLite / MySQL through HikariCP. Writes go through one thread to keep their order, results return to the main thread through `MainThread`. `ServerLock` keeps two running servers from sharing one `server-id`
   * `menu`, `input`, `text`, `config`, `hook` - history menus, amount input, messages, settings, PlaceholderAPI
 
 HikariCP and the MySQL driver are not shaded: they are listed under `libraries` in `plugin.yml` and downloaded by Paper.

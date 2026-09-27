@@ -5,6 +5,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import me.spolzer.intrade.storage.TradeStorage;
 
 /**
  * Runs database callbacks on the main server thread.
@@ -12,7 +13,7 @@ import java.util.logging.Logger;
  * <p>Unlike the Bukkit scheduler, it still accepts tasks while the plugin is disabling, so the results of the
  * last database operations, such as mail that was already taken from the database, are not lost.
  */
-public final class MainThread implements Executor {
+public final class MainThread implements Executor, TradeStorage.MainThreadQueue {
     private final Queue<Runnable> queue = new ConcurrentLinkedQueue<>();
     private final Logger logger;
 
@@ -26,7 +27,8 @@ public final class MainThread implements Executor {
     }
 
     /** Runs all queued tasks. Main thread only. */
-    void drain() {
+    @Override
+    public void drain() {
         Runnable task;
         while ((task = queue.poll()) != null) {
             try {
@@ -35,5 +37,10 @@ public final class MainThread implements Executor {
                 logger.log(Level.SEVERE, "Error in a scheduled InTrade task", e);
             }
         }
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return queue.isEmpty();
     }
 }

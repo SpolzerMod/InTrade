@@ -129,6 +129,9 @@ request:
 
 trade:
   blocked-item: "<red>Предмет <white><item></white> нельзя обменивать."
+  blocked-content: "<red>В <white><container></white> лежит <white><item></white>, этот предмет нельзя обменивать."
+  save-failed: "<red>Не удалось сохранить изменение, попробуйте ещё раз."
+  currency-disabled: "<yellow>Одна из валют обмена отключена на сервере, её сумма убрана из предложения."
   offer-full: "<red>В вашем предложении нет свободных ячеек."
   inventory-full: "<red>В инвентаре нет места."
   not-enough-own: "<red>Недостаточно средств: нужно <amount>, на счету <balance>."
@@ -138,6 +141,8 @@ trade:
     left: "<white><player></white> <red>вышел с сервера, обмен отменён."
     died: "<white><player></white> <red>погиб, обмен отменён."
     blocked: "<red>Не удалось открыть окно обмена для <player>."
+    timeout: "<red>Обмен длился слишком долго и был отменён."
+    distance: "<red>Вы слишком далеко друг от друга, обмен отменён."
   failed:
     not-enough: "<red>У <white><player></white> недостаточно средств. Обмен остановлен."
     no-space: "<red>У <white><player></white> недостаточно места в инвентаре. Обмен остановлен."
@@ -145,7 +150,6 @@ trade:
 
 mail:
   saved: "<yellow>Предметы из обмена сохранены и вернутся после возрождения. Если этого не произошло, введите <white>/trade claim</white>."
-  stored: "<yellow>Часть предметов не поместилась. Заберите их командой <white>/trade claim</white>."
   delivered: "<green>Получено из почты обмена стаков: <count>."
   partial: "<yellow>Ещё стаков в почте: <count>. Освободите место и введите <white>/trade claim</white>."
   empty: "<gray>Почта обмена пуста."

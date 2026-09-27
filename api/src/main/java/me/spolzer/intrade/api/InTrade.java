@@ -30,10 +30,13 @@ public interface InTrade {
     /** Whether the player has an open trade window. Main thread only. */
     boolean isTrading(Player player);
 
-    /** Number of completed trades of the player. Not affected by history cleanup. */
+    /**
+     * Number of counted trades of the player. Trades with the same partner count once per
+     * {@code stats.pair-cooldown-minutes}. Not affected by history cleanup.
+     */
     CompletableFuture<Integer> tradeCount(UUID player);
 
-    /** Players with the most completed trades, best first. */
+    /** Players with the most counted trades, best first. */
     CompletableFuture<List<TraderStats>> topTraders(int limit);
 
     /** Ids of the enabled currencies, for example {@code money}, {@code experience}, {@code playerpoints}. */

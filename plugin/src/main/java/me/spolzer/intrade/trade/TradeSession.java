@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.BooleanSupplier;
+import java.util.logging.Logger;
 import me.spolzer.intrade.InTradePlugin;
 import me.spolzer.intrade.api.TradeOffer;
 import me.spolzer.intrade.api.event.TradeCancelEvent;
@@ -21,10 +24,23 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
+/**
+ * One open trade between two players.
+ *
+ * <p>Items in the trade window are protected against a crash by the offer rows of {@code TradeStorage} and the
+ * version in the player file ({@link OfferMark}). Every change is saved first and applied only after the commit, in
+ * one main thread step together with the new version. Player files are only written on the main thread, so any
+ * saved file, including autosaves, points to an offer that is already in the database.
+ */
 public final class TradeSession {
+    // While an offer changes, the player file is saved at most this often. This only lets old offer rows be
+    // deleted, the protection itself does not depend on it.
+    private static final long SAVE_INTERVAL_MILLIS = 2000;
+
     private final InTradePlugin plugin;
     private final TradeSide a;
     private final TradeSide b;
+    private final long startedAt = System.currentTimeMillis();
     private long lockUntil;
     private long countdownEnd;
     private int lastCountdownSecond = -1;
@@ -80,10 +96,21 @@ public final class TradeSession {
                 return;
             }
         }
-        for (TradeSide side : List.of(a, b)) {
-            if (side.dirty) persist(side);
-        }
         long now = System.currentTimeMillis();
+        long maxDuration = settings().maxTradeMillis();
+        if (maxDuration > 0 && now - startedAt >= maxDuration) {
+            stop(TradeCancelEvent.Reason.TIMEOUT, "trade.cancelled.timeout", null, null);
+            return;
+        }
+        if (outOfRange()) {
+            stop(TradeCancelEvent.Reason.DISTANCE, "trade.cancelled.distance", null, null);
+            return;
+        }
+        for (TradeSide side : List.of(a, b)) {
+            if (!side.pending && side.version != side.savedVersion && now - side.savedAt >= SAVE_INTERVAL_MILLIS) {
+                saveFile(side, now);
+            }
+        }
         if (countdownEnd > 0) {
             if (now >= countdownEnd) {
                 complete();
@@ -99,6 +126,19 @@ public final class TradeSession {
         render();
     }
 
+    // The same limits as for a request, checked again because players can be teleported during a trade
+    private boolean outOfRange() {
+        Settings settings = settings();
+        Player first = a.player;
+        Player second = b.player;
+        if (settings.isWorldDisabled(first.getWorld().getName()) || settings.isWorldDisabled(second.getWorld().getName())) return true;
+        if (first.hasPermission("intrade.bypass.distance") || second.hasPermission("intrade.bypass.distance")) return false;
+        boolean sameWorld = first.getWorld().equals(second.getWorld());
+        if (settings.sameWorld() && !sameWorld) return true;
+        double max = settings.maxDistance();
+        return max > 0 && (!sameWorld || first.getLocation().distanceSquared(second.getLocation()) > max * max);
+    }
+
     private void render() {
         long now = System.currentTimeMillis();
         a.menu.render(now);
@@ -106,33 +146,39 @@ public final class TradeSession {
     }
 
     void offer(TradeSide side, Inventory from, int slot, int amount) {
+        if (side.pending) return;
         ItemStack source = from.getItem(slot);
         if (Inventories.empty(source)) return;
-        if (settings().isBlocked(source.getType()) && !side.player.hasPermission("intrade.bypass.blocked")) {
-            messages().send(side.player, "trade.blocked-item", TradeMenu.itemArgs(source));
-            error(side.player);
-            return;
+        if (!side.player.hasPermission("intrade.bypass.blocked")) {
+            ItemStack blocked = Containers.findBlocked(source, settings()::isBlocked);
+            if (blocked != null) {
+                if (blocked == source) {
+                    messages().send(side.player, "trade.blocked-item", TradeMenu.itemArgs(source));
+                } else {
+                    messages().send(side.player, "trade.blocked-content",
+                            Arg.of("container", source.effectiveName()), Arg.of("item", blocked.effectiveName()));
+                }
+                error(side.player);
+                return;
+            }
         }
 
-        long now = System.currentTimeMillis();
+        ItemStack[] next = side.copyItems();
         int max = source.getMaxStackSize();
         int wanted = Math.min(amount, source.getAmount());
         int left = wanted;
         for (int i = 0; i < TradeSide.SLOTS && left > 0; i++) {
-            ItemStack item = side.items[i];
+            ItemStack item = next[i];
             if (item != null && item.isSimilar(source) && item.getAmount() < max) {
                 int moved = Math.min(left, max - item.getAmount());
                 item.setAmount(item.getAmount() + moved);
-                side.changedAt[i] = now;
                 left -= moved;
             }
         }
         for (int i = 0; i < TradeSide.SLOTS && left > 0; i++) {
-            if (side.items[i] != null) continue;
+            if (next[i] != null) continue;
             int moved = Math.min(left, max);
-            side.items[i] = source.asQuantity(moved);
-            side.removed[i] = null;
-            side.changedAt[i] = now;
+            next[i] = source.asQuantity(moved);
             left -= moved;
         }
 
@@ -142,33 +188,78 @@ public final class TradeSession {
             error(side.player);
             return;
         }
+        ItemStack taken = source.clone();
         int remaining = source.getAmount() - moved;
-        from.setItem(slot, remaining > 0 ? source.asQuantity(remaining) : null);
-        sound(TradeSound.PUT, side.player);
-        changed(side);
+        commit(side, next, TradeSound.PUT, () -> {
+            // The slot may have changed while the offer was being saved
+            if (!taken.equals(from.getItem(slot))) return false;
+            from.setItem(slot, remaining > 0 ? taken.asQuantity(remaining) : null);
+            return true;
+        });
     }
 
     void take(TradeSide side, int index, int amount) {
+        if (side.pending) return;
         ItemStack item = side.items[index];
         if (item == null) return;
-        int wanted = Math.min(amount, item.getAmount());
-        int returned = wanted;
-        for (ItemStack rest : Inventories.give(side.player, List.of(item.asQuantity(wanted)))) returned -= rest.getAmount();
+        int returned = Math.min(Math.min(amount, item.getAmount()), Inventories.room(side.player, item));
         if (returned <= 0) {
             messages().send(side.player, "trade.inventory-full");
             error(side.player);
             return;
         }
-        if (returned >= item.getAmount()) {
-            side.removed[index] = item.clone();
-            side.items[index] = null;
-        } else {
-            item.setAmount(item.getAmount() - returned);
-            side.removed[index] = null;
-        }
-        side.changedAt[index] = System.currentTimeMillis();
-        sound(TradeSound.TAKE, side.player);
-        changed(side);
+        ItemStack[] next = side.copyItems();
+        if (returned >= item.getAmount()) next[index] = null;
+        else next[index].setAmount(item.getAmount() - returned);
+        ItemStack back = item.asQuantity(returned);
+        commit(side, next, TradeSound.TAKE, () -> {
+            if (Inventories.room(side.player, back) < returned) return false;
+            side.player.getInventory().addItem(back);
+            return true;
+        });
+    }
+
+    // Saves the new offer, then moves the items and stores the new version in one main thread step
+    private void commit(TradeSide side, ItemStack[] next, TradeSound sound, BooleanSupplier moveItems) {
+        side.pending = true;
+        a.ready = false;
+        b.ready = false;
+        countdownEnd = 0;
+        long version = OfferMark.next();
+        plugin.storage().saveOffer(side.id(), version, TradeSide.list(next)).whenCompleteAsync((ignored, failure) -> {
+            side.pending = false;
+            if (finished) return;
+            if (failure != null) {
+                messages().send(side.player, "trade.save-failed");
+                error(side.player);
+                render();
+                return;
+            }
+            if (!side.player.isOnline() || !moveItems.getAsBoolean()) {
+                render();
+                return;
+            }
+            long now = System.currentTimeMillis();
+            for (int i = 0; i < TradeSide.SLOTS; i++) {
+                ItemStack before = side.items[i];
+                if (Objects.equals(before, next[i])) continue;
+                side.removed[i] = next[i] == null ? before.clone() : null;
+                side.changedAt[i] = now;
+                side.items[i] = next[i];
+            }
+            side.version = version;
+            plugin.offerMark().set(side.player, version);
+            sound(sound, side.player);
+            changed(side);
+        }, plugin.mainThread());
+    }
+
+    // Once the file holds the current version, the older rows are not needed after a crash
+    private void saveFile(TradeSide side, long now) {
+        side.player.saveData();
+        side.savedVersion = side.version;
+        side.savedAt = now;
+        plugin.storage().dropOffersExcept(side.id(), side.version);
     }
 
     void setCurrency(TradeSide side, Currency currency, BigDecimal amount) {
@@ -185,6 +276,17 @@ public final class TradeSession {
         changed(side);
     }
 
+    /** Removes the amounts of currencies that were disabled by a reload, so the trade can still complete. */
+    void dropDisabledCurrencies() {
+        if (finished) return;
+        for (TradeSide side : List.of(a, b)) {
+            if (!side.currencies.keySet().removeIf(id -> currencies().byId(id) == null)) continue;
+            messages().send(side.player, "trade.currency-disabled");
+            messages().send(other(side).player, "trade.currency-disabled");
+            changed(side);
+        }
+    }
+
     void askAmount(TradeSide side, Currency currency) {
         side.mode = TradeSide.Mode.INPUT;
         unready(side);
@@ -194,7 +296,7 @@ public final class TradeSession {
             plugin.prompts().ask(side.player, currency, side.currency(currency.id()), value -> {
                 if (finished || !side.player.isOnline()) return;
                 side.mode = TradeSide.Mode.MENU;
-                if (value != null) setCurrency(side, currency, value);
+                if (value != null && currencies().byId(currency.id()) != null) setCurrency(side, currency, value);
                 reopen(side);
             });
         });
@@ -240,7 +342,7 @@ public final class TradeSession {
             sound(TradeSound.UNREADY, side.player);
             return;
         }
-        if (locked(now) || bothEmpty()) {
+        if (side.pending || locked(now) || bothEmpty()) {
             error(side.player);
             return;
         }
@@ -279,7 +381,6 @@ public final class TradeSession {
         b.ready = false;
         countdownEnd = 0;
         lockUntil = System.currentTimeMillis() + settings().changeLockMillis();
-        side.dirty = true;
         sound(TradeSound.CHANGED, other(side).player);
         render();
     }
@@ -300,25 +401,23 @@ public final class TradeSession {
         closeViews();
         returnItems(a, false);
         returnItems(b, false);
-        release();
         Bukkit.getPluginManager().callEvent(new TradeCancelEvent(a.player, b.player, null, TradeCancelEvent.Reason.SHUTDOWN));
     }
 
-    private void stop(TradeCancelEvent.Reason reason, String key, TradeSide cause, TradeSide mailSide) {
+    private void stop(TradeCancelEvent.Reason reason, String key, TradeSide cause, TradeSide died) {
         if (finished) return;
         finished = true;
         plugin.trades().remove(this);
         Bukkit.getScheduler().runTask(plugin, this::closeViews);
-        returnItems(a, a == mailSide);
-        returnItems(b, b == mailSide);
-        release();
+        returnItems(a, a == died);
+        returnItems(b, b == died);
 
-        Arg who = Arg.of("player", cause.player.getName());
+        Arg who = Arg.of("player", cause != null ? cause.player.getName() : "");
         for (TradeSide side : List.of(a, b)) {
             messages().send(side.player, key, who);
             sound(TradeSound.CANCELLED, side.player);
         }
-        Bukkit.getPluginManager().callEvent(new TradeCancelEvent(a.player, b.player, cause.player, reason));
+        Bukkit.getPluginManager().callEvent(new TradeCancelEvent(a.player, b.player, cause != null ? cause.player : null, reason));
     }
 
     private void complete() {
@@ -345,7 +444,7 @@ public final class TradeSession {
 
         // Everything is withdrawn before anything is paid out. If a step fails, the steps done so far are undone
         // in reverse order and the trade stays open.
-        List<Runnable> undo = new ArrayList<>();
+        List<Transfer> undo = new ArrayList<>();
         for (TradeSide side : List.of(a, b)) {
             for (Map.Entry<String, BigDecimal> entry : side.currencyMap().entrySet()) {
                 Currency currency = currencies().byId(entry.getKey());
@@ -355,7 +454,7 @@ public final class TradeSession {
                     fail("trade.failed.not-enough", side);
                     return;
                 }
-                undo.add(() -> currency.deposit(side.player, amount));
+                undo.add(new Transfer(side.player, currency, amount, true));
             }
         }
         for (TradeSide side : List.of(a, b)) {
@@ -368,7 +467,7 @@ public final class TradeSession {
                     fail("trade.failed.deposit", other(side));
                     return;
                 }
-                undo.add(() -> currency.withdraw(receiver, amount));
+                undo.add(new Transfer(receiver, currency, amount, false));
             }
         }
 
@@ -380,25 +479,63 @@ public final class TradeSession {
         Arrays.fill(b.items, null);
         Bukkit.getScheduler().runTask(plugin, this::closeViews);
 
-        deliver(a, toA);
-        deliver(b, toB);
-        release();
-
-        plugin.storage().saveTrade(new TradeRecord(System.currentTimeMillis(),
-                a.id(), a.player.getName(), b.id(), b.player.getName(),
-                toB, toA, aCurrencies, bCurrencies), settings().historyEnabled())
-                .thenRunAsync(() -> plugin.stats().traded(a.id(), b.id()), plugin.mainThread());
-
+        // A side that offered no items has no saved offer yet. Its new version goes into the player file right away:
+        // until the commit it points to no row, which is correct, as nothing of that player is in the trade.
         for (TradeSide side : List.of(a, b)) {
-            messages().send(side.player, "trade.completed", Arg.of("player", other(side).player.getName()));
-            sound(TradeSound.COMPLETED, side.player);
+            if (side.version != 0) continue;
+            side.version = OfferMark.next();
+            plugin.offerMark().set(side.player, side.version);
         }
-        Bukkit.getPluginManager().callEvent(new TradeCompleteEvent(a.player, b.player,
-                new TradeOffer(toB, aCurrencies), new TradeOffer(toA, bCurrencies)));
+        // After this commit each offer row holds what its owner receives, so the items are handed out only then
+        plugin.storage().swapOffers(a.id(), a.version, toA, b.id(), b.version, toB).whenCompleteAsync((ignored, failure) -> {
+            receive(a, toA, failure == null);
+            receive(b, toB, failure == null);
+            plugin.storage().saveTrade(new TradeRecord(System.currentTimeMillis(),
+                    a.id(), a.player.getName(), b.id(), b.player.getName(),
+                    toB, toA, aCurrencies, bCurrencies), settings().historyEnabled(), settings().pairCooldownMillis())
+                    .thenAcceptAsync(counted -> {
+                        if (counted) plugin.stats().traded(a.id(), b.id());
+                    }, plugin.mainThread());
+
+            for (TradeSide side : List.of(a, b)) {
+                messages().send(side.player, "trade.completed", Arg.of("player", other(side).player.getName()));
+                sound(TradeSound.COMPLETED, side.player);
+            }
+            Bukkit.getPluginManager().callEvent(new TradeCompleteEvent(a.player, b.player,
+                    new TradeOffer(toB, aCurrencies), new TradeOffer(toA, bCurrencies)));
+        }, plugin.mainThread());
     }
 
-    private static void rollback(List<Runnable> undo) {
-        for (int i = undo.size() - 1; i >= 0; i--) undo.get(i).run();
+    private void receive(TradeSide side, List<ItemStack> items, boolean saved) {
+        Player player = side.player;
+        if (!player.isOnline()) {
+            // The player file keeps the version of the row, the items are returned on the next join
+            if (!saved) plugin.storage().addMail(side.id(), items);
+            return;
+        }
+        if (!Inventories.fits(player, items)) {
+            // Space was taken after the check. Everything goes to mail and what fits is delivered right away.
+            if (saved) toMail(side, true);
+            else plugin.storage().addMail(side.id(), items);
+            return;
+        }
+        if (!items.isEmpty()) player.getInventory().addItem(items.toArray(new ItemStack[0]));
+        release(side);
+    }
+
+    private void rollback(List<Transfer> undo) {
+        for (int i = undo.size() - 1; i >= 0; i--) undo.get(i).undo(plugin.getLogger());
+    }
+
+    private record Transfer(Player player, Currency currency, BigDecimal amount, boolean withdrawn) {
+        void undo(Logger logger) {
+            boolean done = withdrawn ? currency.deposit(player, amount) : currency.withdraw(player, amount);
+            if (!done) {
+                logger.severe("Could not undo a transfer of " + amount.toPlainString() + " " + currency.id()
+                        + (withdrawn ? " from " : " to ") + player.getName()
+                        + " after a failed trade. The balance needs to be corrected manually");
+            }
+        }
     }
 
     private void fail(String key, TradeSide cause) {
@@ -413,40 +550,37 @@ public final class TradeSession {
         render();
     }
 
-    // Runs from tick(), so fast clicking writes the player file at most four times a second. Until then the
-    // saved player file and escrow both still hold the previous offer, which is safe to restore after a crash.
-    // The player file is written here, the escrow row right after on the storage thread. A file and a database
-    // row cannot share a transaction, so a crash in the milliseconds between the two can leave them out of step.
-    private void persist(TradeSide side) {
-        side.dirty = false;
-        side.player.saveData();
-        plugin.storage().saveEscrow(side.id(), side.itemList());
-    }
-
-    private void release() {
-        for (TradeSide side : List.of(a, b)) {
-            if (side.player.isOnline()) side.player.saveData();
-            plugin.storage().clearEscrow(side.id());
-        }
-    }
-
-    private void returnItems(TradeSide side, boolean toMail) {
+    // Online, the items go back to the inventory in the same step as the version is removed from the player file.
+    // Otherwise the saved offer is moved to trade mail as a whole.
+    private void returnItems(TradeSide side, boolean died) {
         List<ItemStack> items = side.itemList();
         Arrays.fill(side.items, null);
-        if (items.isEmpty()) return;
-        if (toMail || !side.player.isOnline()) {
-            plugin.storage().addMail(side.id(), items);
-            messages().send(side.player, "mail.saved");
+        if (items.isEmpty()) {
+            release(side);
             return;
         }
-        deliver(side, items);
+        Player player = side.player;
+        if (died || !player.isOnline() || !Inventories.fits(player, items)) {
+            toMail(side, !died);
+            if (died) messages().send(player, "mail.saved");
+            return;
+        }
+        player.getInventory().addItem(items.toArray(new ItemStack[0]));
+        release(side);
     }
 
-    private void deliver(TradeSide side, List<ItemStack> items) {
-        List<ItemStack> rest = Inventories.give(side.player, items);
-        if (rest.isEmpty()) return;
-        plugin.storage().addMail(side.id(), rest);
-        messages().send(side.player, "mail.stored");
+    private void toMail(TradeSide side, boolean deliverNow) {
+        plugin.storage().offerToMail(side.id(), side.version).thenRunAsync(() -> {
+            if (deliverNow && side.player.isOnline()) plugin.deliverMail(side.player, false);
+        }, plugin.mainThread());
+    }
+
+    // The rows can be deleted only after the file without a version is saved
+    private void release(TradeSide side) {
+        if (side.version == 0) return;
+        plugin.offerMark().clear(side.player);
+        if (side.player.isOnline()) side.player.saveData();
+        plugin.storage().clearOffers(side.id());
     }
 
     private void closeViews() {

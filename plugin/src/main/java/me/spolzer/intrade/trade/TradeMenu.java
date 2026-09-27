@@ -217,7 +217,7 @@ public final class TradeMenu implements InventoryHolder {
         int theirs = partnerIndex(slot);
         if (theirs >= 0) {
             ItemStack item = partner.items[theirs];
-            if (item != null && right && PreviewMenu.hasContents(item)) session.preview(side, item);
+            if (item != null && right && Containers.hasContents(item)) session.preview(side, item);
             return;
         }
 

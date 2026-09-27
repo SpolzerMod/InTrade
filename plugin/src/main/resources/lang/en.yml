@@ -129,6 +129,9 @@ request:
 
 trade:
   blocked-item: "<red><white><item></white> cannot be traded."
+  blocked-content: "<red><white><container></white> contains <white><item></white>, which cannot be traded."
+  save-failed: "<red>Could not save the change, please try again."
+  currency-disabled: "<yellow>A currency in this trade was disabled by the server, its amount was removed."
   offer-full: "<red>Your offer has no free slots."
   inventory-full: "<red>Your inventory is full."
   not-enough-own: "<red>Not enough funds: <amount> needed, <balance> available."
@@ -138,6 +141,8 @@ trade:
     left: "<white><player></white> <red>left the server, trade cancelled."
     died: "<white><player></white> <red>died, trade cancelled."
     blocked: "<red>Could not open the trade window for <player>."
+    timeout: "<red>The trade took too long and was cancelled."
+    distance: "<red>You are too far apart, trade cancelled."
   failed:
     not-enough: "<white><player></white> <red>does not have enough funds. Trade stopped."
     no-space: "<white><player></white> <red>does not have enough inventory space. Trade stopped."
@@ -145,7 +150,6 @@ trade:
 
 mail:
   saved: "<yellow>Your trade items are safe and will be returned after you respawn. If they are not, use <white>/trade claim</white>."
-  stored: "<yellow>Some items did not fit. Use <white>/trade claim</white> to collect them."
   delivered: "<green>Received <count> stack(s) from trade mail."
   partial: "<yellow><count> more stack(s) are waiting. Free up some space and use <white>/trade claim</white>."
   empty: "<gray>Your trade mail is empty."

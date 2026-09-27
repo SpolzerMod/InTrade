@@ -38,6 +38,10 @@ public final class TradeManager {
         for (TradeSession session : new LinkedHashSet<>(sessions.values())) session.tick();
     }
 
+    public void currenciesReloaded() {
+        for (TradeSession session : new LinkedHashSet<>(sessions.values())) session.dropDisabledCurrencies();
+    }
+
     public void shutdown() {
         for (TradeSession session : new LinkedHashSet<>(sessions.values())) session.shutdown();
     }

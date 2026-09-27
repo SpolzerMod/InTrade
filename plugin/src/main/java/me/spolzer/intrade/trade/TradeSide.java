@@ -22,8 +22,13 @@ public final class TradeSide {
     final Map<String, BigDecimal> currencies = new LinkedHashMap<>();
     final Map<String, Long> currencyChangedAt = new HashMap<>();
     boolean ready;
-    // Offer changed since the last save of the player file and escrow
-    boolean dirty;
+    // Version of the saved offer that matches the items, 0 before the first change
+    long version;
+    // Version in the player file as last saved by the trade, and when
+    long savedVersion;
+    long savedAt;
+    // A change is being saved, further clicks wait for it
+    boolean pending;
     Mode mode = Mode.MENU;
     TradeMenu menu;
     PreviewMenu preview;
@@ -37,6 +42,16 @@ public final class TradeSide {
     BigDecimal currency(String id) { return currencies.getOrDefault(id, BigDecimal.ZERO); }
 
     List<ItemStack> itemList() {
+        return list(items);
+    }
+
+    ItemStack[] copyItems() {
+        ItemStack[] copy = new ItemStack[SLOTS];
+        for (int i = 0; i < SLOTS; i++) copy[i] = items[i] == null ? null : items[i].clone();
+        return copy;
+    }
+
+    static List<ItemStack> list(ItemStack[] items) {
         List<ItemStack> list = new ArrayList<>();
         for (ItemStack item : items) {
             if (item != null) list.add(item.clone());
