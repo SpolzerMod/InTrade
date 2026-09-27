@@ -240,6 +240,6 @@ public final class TradeMenu implements InventoryHolder {
     }
 
     static Arg[] itemArgs(ItemStack item) {
-        return new Arg[] {Arg.of("item", item.effectiveName()), Arg.of("count", item.getAmount())};
+        return new Arg[] {Arg.of("item", Icons.name(item)), Arg.of("count", item.getAmount())};
     }
 }

@@ -89,7 +89,7 @@ public final class HistoryMenu implements InventoryHolder {
         int shown = 0;
         for (ItemStack item : items) {
             if (lines.size() >= SUMMARY_LINES) break;
-            lines.add(messages.item(viewer, "history.entry.item", Arg.of("item", item.effectiveName()), Arg.of("count", item.getAmount())));
+            lines.add(messages.item(viewer, "history.entry.item", Arg.of("item", Icons.name(item)), Arg.of("count", item.getAmount())));
             shown++;
         }
         if (items.size() > shown) lines.add(messages.item(viewer, "history.entry.more", Arg.of("count", items.size() - shown)));

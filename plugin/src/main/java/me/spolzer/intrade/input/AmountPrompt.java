@@ -1,44 +1,40 @@
 package me.spolzer.intrade.input;
 
-import io.papermc.paper.dialog.Dialog;
-import io.papermc.paper.registry.data.dialog.ActionButton;
-import io.papermc.paper.registry.data.dialog.DialogBase;
-import io.papermc.paper.registry.data.dialog.action.DialogAction;
-import io.papermc.paper.registry.data.dialog.action.DialogActionCallback;
-import io.papermc.paper.registry.data.dialog.body.DialogBody;
-import io.papermc.paper.registry.data.dialog.input.DialogInput;
-import io.papermc.paper.registry.data.dialog.type.DialogType;
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.logging.Level;
 import me.spolzer.intrade.InTradePlugin;
 import me.spolzer.intrade.currency.Currencies;
 import me.spolzer.intrade.currency.Currency;
 import me.spolzer.intrade.text.Arg;
 import me.spolzer.intrade.text.Messages;
-import net.kyori.adventure.audience.Audience;
-import net.kyori.adventure.text.event.ClickCallback;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 public final class AmountPrompt {
-    private static final ClickCallback.Options ONCE = ClickCallback.Options.builder()
-            .uses(1)
-            .lifetime(Duration.ofMinutes(10))
-            .build();
-    private static final MethodHandle CLOSE_DIALOG = closeDialog();
-
     private final InTradePlugin plugin;
+    private final AmountForm form;
     private FloodgateBridge floodgate;
 
     public AmountPrompt(InTradePlugin plugin) {
         this.plugin = plugin;
+        this.form = createForm(plugin);
+    }
+
+    private static AmountForm createForm(InTradePlugin plugin) {
+        try {
+            Class.forName("io.papermc.paper.dialog.Dialog");
+            // Compiled separately against 1.21.7, see the dialog source set
+            return Class.forName("me.spolzer.intrade.input.DialogForm").asSubclass(AmountForm.class)
+                    .getDeclaredConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+            plugin.getLogger().info("This server version has no dialogs, amounts are entered in an anvil");
+            AnvilForm anvil = new AnvilForm(plugin);
+            plugin.getServer().getPluginManager().registerEvents(anvil, plugin);
+            return anvil;
+        }
     }
 
     public void hookFloodgate() {
@@ -76,31 +72,15 @@ public final class AmountPrompt {
             return;
         }
 
-        List<DialogBody> body = new ArrayList<>();
-        body.add(DialogBody.plainMessage(messages.get(player, "prompt.balance", args)));
-        body.add(DialogBody.plainMessage(messages.get(player, "prompt.hint", args)));
-        if (retry) body.add(DialogBody.plainMessage(messages.get(player, "prompt.retry", args)));
-
-        String all = plain(currency.balance(player));
-        DialogActionCallback confirm = (view, audience) -> answer.accept(view.getText("amount"));
-        DialogActionCallback everything = (view, audience) -> answer.accept(all);
-        DialogActionCallback cancel = (view, audience) -> answer.accept(null);
-
-        player.showDialog(Dialog.create(factory -> factory.empty()
-                .base(DialogBase.builder(messages.get(player, "prompt.title", args))
-                        .canCloseWithEscape(false)
-                        .body(body)
-                        .inputs(List.of(DialogInput.text("amount", messages.get(player, "prompt.label", args))
-                                .initial(initial)
-                                .maxLength(24)
-                                .build()))
-                        .build())
-                .type(DialogType.multiAction(
-                        List.of(
-                                ActionButton.create(messages.get(player, "prompt.confirm"), null, 100, DialogAction.customClick(confirm, ONCE)),
-                                ActionButton.create(messages.get(player, "prompt.all", args), null, 100, DialogAction.customClick(everything, ONCE))),
-                        ActionButton.create(messages.get(player, "prompt.cancel"), null, 200, DialogAction.customClick(cancel, ONCE)),
-                        2))));
+        List<Component> body = new ArrayList<>();
+        body.add(messages.get(player, "prompt.balance", args));
+        body.add(messages.get(player, "prompt.hint", args));
+        if (retry) body.add(messages.get(player, "prompt.retry", args));
+        if (form instanceof AnvilForm) body.add(messages.get(player, "prompt.close-to-cancel"));
+        form.show(player, new AmountForm.Request(messages.get(player, "prompt.title", args), body,
+                messages.get(player, "prompt.label", args), initial, plain(currency.balance(player)),
+                messages.get(player, "prompt.confirm"), messages.get(player, "prompt.all", args),
+                messages.get(player, "prompt.cancel")), answer);
     }
 
     public void offerRequestForm(Player target, Player from, Runnable accept, Runnable deny) {
@@ -117,26 +97,11 @@ public final class AmountPrompt {
                 }));
     }
 
-    // closeDialog was added in 1.21.8. On 1.21.7 the dialog stays open until a button is pressed,
-    // and the answer is ignored because the trade has ended.
     public void dismiss(Player player) {
-        if (CLOSE_DIALOG == null) return;
-        try {
-            CLOSE_DIALOG.invoke(player);
-        } catch (Throwable e) {
-            plugin.getLogger().log(Level.FINE, "Could not close a dialog", e);
-        }
+        form.close(player);
     }
 
-    private static MethodHandle closeDialog() {
-        try {
-            return MethodHandles.publicLookup().findVirtual(Audience.class, "closeDialog", MethodType.methodType(void.class));
-        } catch (ReflectiveOperationException e) {
-            return null;
-        }
-    }
-
-    // Dialog callbacks arrive on the main thread, Floodgate form callbacks on a network thread
+    // Dialog and anvil answers arrive on the main thread, Floodgate form callbacks on a network thread
     private void onMain(Runnable task) {
         if (Bukkit.isPrimaryThread()) task.run();
         else plugin.mainThread().execute(task);

@@ -97,6 +97,7 @@ prompt:
   confirm: "<green>Confirm"
   all: "<gold>All (<balance>)"
   cancel: "<gray>Cancel"
+  close-to-cancel: "<dark_gray>Close the window to cancel."
   invalid: "<red>\"<input>\" is not a number."
   bedrock-label: "Amount (balance: <balance>)"
   bedrock-label-retry: "Not a number. Amount (balance: <balance>)"

@@ -1,7 +1,7 @@
 name: InTrade
 version: '${version}'
 main: me.spolzer.intrade.InTradePlugin
-api-version: '1.21.7'
+api-version: '1.21'
 author: Spolzer
 description: Player-to-player trading with items, money, experience and points.
 softdepend: [Vault, PlayerPoints, floodgate, PlaceholderAPI]

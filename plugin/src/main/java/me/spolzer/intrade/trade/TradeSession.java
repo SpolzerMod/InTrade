@@ -16,6 +16,7 @@ import me.spolzer.intrade.config.Settings;
 import me.spolzer.intrade.config.TradeSound;
 import me.spolzer.intrade.currency.Currencies;
 import me.spolzer.intrade.currency.Currency;
+import me.spolzer.intrade.menu.Icons;
 import me.spolzer.intrade.storage.TradeRecord;
 import me.spolzer.intrade.text.Arg;
 import me.spolzer.intrade.text.Messages;
@@ -156,7 +157,7 @@ public final class TradeSession {
                     messages().send(side.player, "trade.blocked-item", TradeMenu.itemArgs(source));
                 } else {
                     messages().send(side.player, "trade.blocked-content",
-                            Arg.of("container", source.effectiveName()), Arg.of("item", blocked.effectiveName()));
+                            Arg.of("container", Icons.name(source)), Arg.of("item", Icons.name(blocked)));
                 }
                 error(side.player);
                 return;

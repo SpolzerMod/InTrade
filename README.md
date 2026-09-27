@@ -1,6 +1,6 @@
 # InTrade
 
-![Paper](https://img.shields.io/badge/Paper-1.21.7--26.3-blue)
+![Paper](https://img.shields.io/badge/Paper-1.21.1--26.3-blue)
 ![Java](https://img.shields.io/badge/Java-21-orange)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -11,13 +11,13 @@ It is:
 * **safe** - any change resets both confirmations and locks the Ready button for a moment. Every change of an offer is written to the database before the items move, so a crash can neither lose nor duplicate them. Blocked items are also found inside shulker boxes and bundles.
 * **complete** - Vault money, experience levels and PlayerPoints next to 16 item slots per side. Amounts can be typed as `1500`, `2.5k` or `1m`.
 * **transparent** - shulker boxes and bundles in the partner's offer can be opened before confirming, and every trade is kept in the history.
-* **vanilla** - no client mod or resource pack. Bedrock players get native forms through Floodgate.
+* **vanilla** - no client mod or resource pack. Amounts are typed in a dialog, or in an anvil before 1.21.7. Bedrock players get native forms through Floodgate.
 * **multilingual** - each player sees their client language. English and Russian are included.
 * **network ready** - SQLite out of the box, or one MySQL / MariaDB database shared by several servers.
 
 ## Requirements
 
-* Paper 1.21.7 - 26.3 (one jar for all versions)
+* Paper 1.21.1 - 26.3 (one jar for all versions)
 * Java 21 or newer
 
 Optional: Vault with an economy plugin, PlayerPoints, Floodgate, PlaceholderAPI.
@@ -47,7 +47,7 @@ Take `api-<version>.jar` from [Releases](../../releases) and add InTrade to `dep
 
 ```kotlin
 dependencies {
-    compileOnly(files("libs/api-2.1.0.jar"))
+    compileOnly(files("libs/api-2.2.0.jar"))
 }
 ```
 
@@ -77,7 +77,7 @@ cd InTrade/
 
 The plugin jar is in `plugin/build/libs`, the API jar in `api/build/libs`. `build` also runs the unit tests (JUnit 6, MockBukkit, SQLite).
 
-The code is compiled against Paper API 1.21.7 with Java 21 bytecode. The `verifyLatestApi` task, which runs as part of `build`, compiles the same sources against Paper API 26.3 to catch removed methods; this is why JDK 25 is needed.
+The code is compiled against Paper API 1.21.1 with Java 21 bytecode. The dialog input lives in its own source set (`plugin/src/dialog`), compiled against 1.21.7 and loaded only on servers that have dialogs. The `verifyLatestApi` task, which runs as part of `build`, compiles the same sources against Paper API 26.3 to catch removed methods; this is why JDK 25 is needed.
 
 ## Project layout
 

@@ -63,6 +63,14 @@ public final class Icons {
         return item;
     }
 
+    /** Name of the item as shown in its tooltip, without the rarity color. {@code effectiveName} needs 1.21.4. */
+    public static Component name(ItemStack item) {
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null && meta.hasDisplayName()) return meta.displayName();
+        if (meta != null && meta.hasItemName()) return meta.itemName();
+        return Component.translatable(item.translationKey());
+    }
+
     public static ItemStack amount(ItemStack item, int amount) {
         item.setAmount(Math.max(1, Math.min(amount, item.getMaxStackSize())));
         return item;

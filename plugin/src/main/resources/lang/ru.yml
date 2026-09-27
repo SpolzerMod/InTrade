@@ -97,6 +97,7 @@ prompt:
   confirm: "<green>Готово"
   all: "<gold>Всё (<balance>)"
   cancel: "<gray>Отмена"
+  close-to-cancel: "<dark_gray>Закройте окно, чтобы отменить."
   invalid: "<red>\"<input>\" не является числом."
   bedrock-label: "Сумма (на счету <balance>)"
   bedrock-label-retry: "Это не число. Сумма (на счету <balance>)"
