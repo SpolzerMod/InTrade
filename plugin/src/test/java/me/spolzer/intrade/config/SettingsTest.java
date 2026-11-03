@@ -7,11 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStreamReader;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.logging.Logger;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class SettingsTest {
     private static final Logger LOGGER = Logger.getLogger("InTradeTest");
@@ -46,6 +49,49 @@ class SettingsTest {
         assertEquals(0, settings.maxTradeMillis());
         assertEquals(0, settings.pairCooldownMillis());
         assertEquals(5_000, settings.requestExpireMillis());
+    }
+
+    @Test
+    void onlyBuiltInCurrenciesAreEnabledByDefault() {
+        Settings settings = Settings.load(bundled(), LOGGER);
+        assertTrue(settings.currencyEnabled("money"));
+        assertTrue(settings.currencyEnabled("experience"));
+        assertFalse(settings.currencyEnabled("tokens"));
+        assertEquals(BigDecimal.ZERO, settings.taxPercent("money"));
+        assertEquals(BigDecimal.ZERO, settings.taxPercent("tokens"));
+
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("currencies.tokens.enabled", true);
+        config.set("currencies.experience.enabled", false);
+        settings = Settings.load(config, LOGGER);
+        assertTrue(settings.currencyEnabled("tokens"));
+        assertFalse(settings.currencyEnabled("experience"));
+    }
+
+    @Test
+    void taxPercentIsParsedAndClamped() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("currencies.money.tax-percent", 2.5);
+        config.set("currencies.tokens.tax-percent", "10");
+        config.set("currencies.experience.tax-percent", 150);
+        config.set("currencies.playerpoints.tax-percent", "much");
+        config.set("currencies.tickets.tax-percent", "12.125");
+        Settings settings = Settings.load(config, LOGGER);
+
+        assertEquals(new BigDecimal("2.5"), settings.taxPercent("money"));
+        assertEquals(0, new BigDecimal("10").compareTo(settings.taxPercent("tokens")));
+        assertEquals(0, new BigDecimal("100").compareTo(settings.taxPercent("experience")));
+        assertEquals(BigDecimal.ZERO, settings.taxPercent("playerpoints"));
+        assertEquals(new BigDecimal("12.125"), settings.taxPercent("tickets"));
+    }
+
+    // Each would pass a 0 to 100 check as a BigDecimal, but fail or explode in the tax arithmetic
+    @ParameterizedTest
+    @ValueSource(strings = {"1e-2147483647", "1E2", "0.0005", "-5", "+5", "5.", ".5", "1000", "NaN", "0x10"})
+    void taxPercentOtherThanAPlainDecimalIsZero(String value) {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("currencies.money.tax-percent", value);
+        assertEquals(BigDecimal.ZERO, Settings.load(config, LOGGER).taxPercent("money"));
     }
 
     @Test

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 
+/** A currency in the trade window, either {@link BuiltInCurrency} or {@link ExternalCurrency}. */
 public interface Currency {
     String id();
     Material icon();
@@ -12,7 +13,5 @@ public interface Currency {
     int scale();
 
     BigDecimal balance(Player player);
-    boolean withdraw(Player player, BigDecimal amount);
-    boolean deposit(Player player, BigDecimal amount);
     String format(BigDecimal amount);
 }

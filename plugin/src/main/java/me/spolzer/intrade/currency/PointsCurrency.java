@@ -8,7 +8,7 @@ import org.black_ixx.playerpoints.PlayerPointsAPI;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 
-final class PointsCurrency implements Currency {
+final class PointsCurrency implements BuiltInCurrency {
     private final PlayerPointsAPI api = PlayerPoints.getInstance().getAPI();
     private final NumberFormat format;
 

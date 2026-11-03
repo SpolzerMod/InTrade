@@ -31,4 +31,20 @@ class CurrenciesTest {
     void rejectsAnythingElse(String input) {
         assertNull(Currencies.parse(input, 2));
     }
+
+    @ParameterizedTest
+    @CsvSource({
+            "100, 10, 0, 10",
+            "101, 10, 0, 11",
+            "1, 10, 0, 1",
+            "5, 50, 0, 3",
+            "1.05, 10, 2, 0.11",
+            "1000, 2.5, 2, 25.00",
+            "0.01, 0.1, 2, 0.01",
+            "7, 100, 0, 7",
+            "7, 0, 0, 0"
+    })
+    void taxIsRoundedUpToTheCurrencyScale(String amount, String percent, int scale, String expected) {
+        assertEquals(new BigDecimal(expected), Currencies.tax(new BigDecimal(amount), new BigDecimal(percent), scale));
+    }
 }

@@ -1,15 +1,18 @@
 package me.spolzer.intrade.config;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 
@@ -31,15 +34,31 @@ public record Settings(
         int historyKeepDays,
         long pairCooldownMillis,
         Set<String> currencies,
+        Map<String, BigDecimal> taxPercents,
         Set<Material> blockedItems,
         Set<String> disabledWorlds,
         Map<TradeSound, SoundEffect> sounds,
         Database database) {
 
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
+    private static final Pattern TAX_PERCENT = Pattern.compile("\\d{1,3}(\\.\\d{1,3})?");
+
+    /** Ids of the currencies InTrade supports itself. They are enabled unless the config turns them off. */
+    public static final Set<String> BUILT_IN_CURRENCIES = Set.of("money", "experience", "playerpoints");
+
     public static Settings load(ConfigurationSection config, Logger logger) {
-        Set<String> currencies = new HashSet<>();
-        for (String id : List.of("money", "experience", "playerpoints")) {
-            if (config.getBoolean("currencies." + id + ".enabled", true)) currencies.add(id);
+        // Enabled currencies in the order of the config, which is also the order of the currencies of other plugins
+        Set<String> ids = new LinkedHashSet<>();
+        ConfigurationSection section = config.getConfigurationSection("currencies");
+        if (section != null) ids.addAll(section.getKeys(false));
+        ids.addAll(BUILT_IN_CURRENCIES);
+        Set<String> currencies = new LinkedHashSet<>();
+        Map<String, BigDecimal> taxPercents = new HashMap<>();
+        for (String id : ids) {
+            String path = "currencies." + id;
+            if (config.getBoolean(path + ".enabled", BUILT_IN_CURRENCIES.contains(id))) currencies.add(id);
+            BigDecimal tax = taxPercent(config, path + ".tax-percent", logger);
+            if (tax.signum() > 0) taxPercents.put(id, tax);
         }
         Set<Material> blocked = EnumSet.noneOf(Material.class);
         for (String name : config.getStringList("blocked-items")) {
@@ -66,11 +85,30 @@ public record Settings(
                 config.getBoolean("history.enabled", true),
                 Math.max(0, config.getInt("history.keep-days", 90)),
                 Math.max(0, config.getLong("stats.pair-cooldown-minutes", 60)) * 60_000L,
-                Set.copyOf(currencies),
+                Collections.unmodifiableSet(currencies),
+                Map.copyOf(taxPercents),
                 Set.copyOf(blocked),
                 Set.copyOf(worlds),
                 sounds(config, logger),
                 Database.load(config, logger));
+    }
+
+    private static BigDecimal taxPercent(ConfigurationSection config, String path, Logger logger) {
+        Object value = config.get(path);
+        if (value == null) return BigDecimal.ZERO;
+        String text = value.toString().trim();
+        // Plain decimals only: BigDecimal alone would also accept exponents like 1e-2147483647
+        if (!TAX_PERCENT.matcher(text).matches()) {
+            logger.warning("Invalid number in " + path + ": " + value + ", expected a number such as 2.5 with at most "
+                    + "3 decimal places. Using 0");
+            return BigDecimal.ZERO;
+        }
+        BigDecimal percent = new BigDecimal(text);
+        if (percent.compareTo(HUNDRED) > 0) {
+            logger.warning(path + " must be between 0 and 100, got " + value + ". Using 100");
+            percent = HUNDRED;
+        }
+        return percent.stripTrailingZeros();
     }
 
     private static Map<TradeSound, SoundEffect> sounds(ConfigurationSection config, Logger logger) {
@@ -88,7 +126,10 @@ public record Settings(
         return Map.copyOf(sounds);
     }
 
+    /** Built-in currencies are enabled by default, currencies of other plugins only when the config enables them. */
     public boolean currencyEnabled(String id) { return currencies.contains(id); }
+    /** Percent of every amount of the currency that is taken from the receiver, 0 to 100. */
+    public BigDecimal taxPercent(String id) { return taxPercents.getOrDefault(id, BigDecimal.ZERO); }
     public boolean isBlocked(Material material) { return blockedItems.contains(material); }
     public boolean isWorldDisabled(String world) { return disabledWorlds.contains(world.toLowerCase(Locale.ROOT)); }
     public SoundEffect sound(TradeSound sound) { return sounds.getOrDefault(sound, SoundEffect.NONE); }

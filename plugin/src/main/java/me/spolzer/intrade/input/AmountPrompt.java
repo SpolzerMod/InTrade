@@ -19,8 +19,12 @@ public final class AmountPrompt {
     private FloodgateBridge floodgate;
 
     public AmountPrompt(InTradePlugin plugin) {
+        this(plugin, createForm(plugin));
+    }
+
+    AmountPrompt(InTradePlugin plugin, AmountForm form) {
         this.plugin = plugin;
-        this.form = createForm(plugin);
+        this.form = form;
     }
 
     private static AmountForm createForm(InTradePlugin plugin) {
@@ -43,24 +47,36 @@ public final class AmountPrompt {
         plugin.getLogger().info("Floodgate found, Bedrock players will use native forms");
     }
 
-    public void ask(Player player, Currency currency, BigDecimal current, Consumer<BigDecimal> result) {
-        ask(player, currency, current, result, false);
+    /**
+     * Asks the player for an amount. The result is the amount, or null if the player cancelled or the currency is no
+     * longer active or was replaced: the answer is then not parsed with the old currency. If the currency fails while
+     * the prompt is shown again after invalid input, {@code failed} receives the error instead.
+     */
+    public void ask(Player player, Currency currency, BigDecimal current, Consumer<BigDecimal> result,
+                    Consumer<RuntimeException> failed) {
+        ask(player, currency, current, result, failed, false);
     }
 
-    private void ask(Player player, Currency currency, BigDecimal current, Consumer<BigDecimal> result, boolean retry) {
+    private void ask(Player player, Currency currency, BigDecimal current, Consumer<BigDecimal> result,
+                     Consumer<RuntimeException> failed, boolean retry) {
         Messages messages = plugin.messages();
         Arg[] args = {messages.currency(player, currency.id()), Arg.of("balance", currency.format(currency.balance(player)))};
         String initial = current.signum() > 0 ? plain(current) : "";
 
         Consumer<String> answer = text -> onMain(() -> {
-            if (text == null) {
+            Currency now = text == null ? null : plugin.currencies().current(currency);
+            if (now == null) {
                 result.accept(null);
                 return;
             }
-            BigDecimal amount = Currencies.parse(text, currency.scale());
+            BigDecimal amount = Currencies.parse(text, now.scale());
             if (amount == null) {
                 messages.send(player, "prompt.invalid", Arg.of("input", text));
-                ask(player, currency, current, result, true);
+                try {
+                    ask(player, now, current, result, failed, true);
+                } catch (RuntimeException e) {
+                    failed.accept(e);
+                }
                 return;
             }
             result.accept(amount);

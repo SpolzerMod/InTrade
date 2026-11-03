@@ -3,6 +3,7 @@ package me.spolzer.intrade.trade;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import me.spolzer.intrade.currency.Currencies;
 import me.spolzer.intrade.currency.Currency;
 import me.spolzer.intrade.menu.Icons;
 import me.spolzer.intrade.text.Arg;
@@ -134,10 +135,11 @@ public final class TradeMenu implements InventoryHolder {
         }
         BigDecimal amount = side.currency(currency.id());
         Arg value = Arg.of("amount", currency.format(amount));
+        List<Component> lore = new ArrayList<>(tax(currency, amount, "menu.currency.own.tax", "menu.currency.own.tax-rate"));
+        lore.addAll(messages.lore(viewer, "menu.currency.own.lore", name, value,
+                Arg.of("balance", currency.format(currency.balance(viewer)))));
         ItemStack icon = Icons.icon(currency.icon(),
-                messages.item(viewer, amount.signum() > 0 ? "menu.currency.own.name" : "menu.currency.own.empty", name, value),
-                messages.lore(viewer, "menu.currency.own.lore", name, value,
-                        Arg.of("balance", currency.format(currency.balance(viewer)))));
+                messages.item(viewer, amount.signum() > 0 ? "menu.currency.own.name" : "menu.currency.own.empty", name, value), lore);
         return Icons.glowing(icon, amount.signum() > 0);
     }
 
@@ -149,9 +151,21 @@ public final class TradeMenu implements InventoryHolder {
         List<Component> lore = new ArrayList<>();
         if (fresh) lore.addAll(messages.lore(viewer, "menu.currency.changed"));
         lore.addAll(messages.lore(viewer, "menu.currency.partner.lore", name, value));
+        lore.addAll(tax(currency, amount, "menu.currency.partner.tax", null));
         ItemStack icon = Icons.icon(currency.icon(),
                 messages.item(viewer, amount.signum() > 0 ? "menu.currency.partner.name" : "menu.currency.partner.empty", name, value), lore);
         return Icons.glowing(icon, fresh || amount.signum() > 0);
+    }
+
+    // What the receiver gets after tax. Without an amount, only the rate is shown (if rateKey is set).
+    private List<Component> tax(Currency currency, BigDecimal amount, String key, String rateKey) {
+        BigDecimal percent = session.settings().taxPercent(currency.id());
+        if (percent.signum() == 0) return List.of();
+        Arg rate = Arg.of("percent", percent.toPlainString());
+        if (amount.signum() == 0) return rateKey == null ? List.of() : messages.lore(viewer, rateKey, rate);
+        BigDecimal tax = Currencies.tax(session.settings(), currency, amount);
+        return messages.lore(viewer, key, rate, Arg.of("tax", currency.format(tax)),
+                Arg.of("received", currency.format(amount.subtract(tax))));
     }
 
     private ItemStack status(TradeSide who) {
@@ -195,6 +209,10 @@ public final class TradeMenu implements InventoryHolder {
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
         if (session.finished() || side.mode != TradeSide.Mode.MENU) return;
+        session.guard(() -> click(event));
+    }
+
+    private void click(InventoryClickEvent event) {
         ClickType click = event.getClick();
         boolean left = click == ClickType.LEFT || click == ClickType.SHIFT_LEFT;
         boolean right = click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT;

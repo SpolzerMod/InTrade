@@ -36,16 +36,26 @@ safety:
   # Maximum duration of a trade, after which it is cancelled. 0 disables the limit.
   max-trade-seconds: 300
 
+# The trade window has room for three currencies. Only the first three available ones are used.
+# tax-percent: part of every amount that is taken from the receiver and removed, from 0 to 100 with up to 3 decimal places.
+# It is rounded up to the smallest unit of the currency. 0 disables the tax.
 currencies:
   # Requires Vault and an economy plugin.
   money:
     enabled: true
+    tax-percent: 0
   # Whole experience levels.
   experience:
     enabled: true
+    tax-percent: 0
   # Requires PlayerPoints.
   playerpoints:
     enabled: true
+    tax-percent: 0
+  # Currencies of other plugins (see the API in the README) are disabled until they are enabled here
+  # under their id. They come after the built-in ones, in the order of this list. For example:
+  # tokens:
+  #   enabled: true
 
 sounds:
   # Volume of all sounds, from 0 to 1.
