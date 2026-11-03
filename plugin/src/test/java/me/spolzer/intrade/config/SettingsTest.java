@@ -49,6 +49,21 @@ class SettingsTest {
     }
 
     @Test
+    void onlyBuiltInCurrenciesAreEnabledByDefault() {
+        Settings settings = Settings.load(bundled(), LOGGER);
+        assertTrue(settings.currencyEnabled("money"));
+        assertTrue(settings.currencyEnabled("experience"));
+        assertFalse(settings.currencyEnabled("tokens"));
+
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("currencies.tokens.enabled", true);
+        config.set("currencies.experience.enabled", false);
+        settings = Settings.load(config, LOGGER);
+        assertTrue(settings.currencyEnabled("tokens"));
+        assertFalse(settings.currencyEnabled("experience"));
+    }
+
+    @Test
     void mariadbIsAnAliasForMysql() {
         YamlConfiguration config = new YamlConfiguration();
         config.set("storage.type", "MariaDB");

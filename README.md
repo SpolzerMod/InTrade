@@ -9,7 +9,7 @@ InTrade is a player-to-player trading plugin for Paper servers. Two players put 
 It is:
 
 * **safe** - any change resets both confirmations and locks the Ready button for a moment. Every change of an offer is written to the database before the items move, so a crash can neither lose nor duplicate them. Blocked items are also found inside shulker boxes and bundles.
-* **complete** - Vault money, experience levels and PlayerPoints next to 16 item slots per side. Amounts can be typed as `1500`, `2.5k` or `1m`.
+* **complete** - Vault money, experience levels, PlayerPoints and currencies of other plugins next to 16 item slots per side. Amounts can be typed as `1500`, `2.5k` or `1m`.
 * **transparent** - shulker boxes and bundles in the partner's offer can be opened before confirming, and every trade is kept in the history.
 * **vanilla** - no client mod or resource pack. Amounts are typed in a dialog, or in an anvil before 1.21.7. Bedrock players get native forms through Floodgate.
 * **multilingual** - each player sees their client language. English and Russian are included.
@@ -58,6 +58,32 @@ InTrade.get().tradeCount(player.getUniqueId())
 
 Events: `TradeRequestEvent` and `TradeStartEvent` (cancellable), `TradeCompleteEvent`, `TradeCancelEvent`. Currency amounts are `BigDecimal`. Futures complete on a database thread, so switch to the main thread before calling the Bukkit API.
 
+### Currencies of other plugins
+
+Implement `me.spolzer.intrade.api.currency.TradeCurrency` and register it as a service. Several plugins can register currencies; InTrade picks them up when it starts, on `/trade reload` and whenever a provider is registered or unregistered.
+
+```java
+getServer().getServicesManager().register(TradeCurrency.class, new TokenCurrency(), this, ServicePriority.Normal);
+```
+
+```yaml
+currencies:
+  tokens:
+    enabled: true   # currencies of other plugins are off until enabled
+```
+
+* `id()` is lower case `[a-z0-9_-]{1,32}`. It is the config key `currencies.<id>`, the permission `intrade.currency.<id>` (granted by `intrade.player`) and the language key `currency.<id>` (the id is shown if the key is missing). `money`, `experience` and `playerpoints` are reserved for the built-in currencies.
+* `icon()` must be an item and `scale()` between 0 and 18. Both are read once when the currency is loaded; a currency with an invalid id, icon or scale is ignored with a warning.
+* `balance(player)` is called while the trade window is shown: it must be cheap and must never block. If `balance` or `format` throws or returns null, the trade that called it is cancelled, the items go back to their owners and the error is logged with the currency, its plugin and the players.
+* `settle(trade, payments)` applies all payments of one completed trade in this currency, all or none: `true` everything applied, `false` nothing applied (for example a balance changed), an exception: outcome unknown. Each `Payment(from, to, amount)` moves `amount` from `from` to `to`. The trade id is unique per completion attempt, use it as an idempotency key.
+* `revert(trade)` undoes a successful `settle` when a currency settled later fails. It must be idempotent; an exception means it was not undone.
+
+Both run on the main thread while the trade completes, like the transfers of the built-in currencies. They may block briefly (a local transaction) but must never wait for a network call.
+
+When both players confirm, InTrade checks the balances and inventory space, settles the external currencies one after the other in the order of the config, then moves the built-in currencies. On a failure the steps done so far are undone in reverse order and the trade stays open. If an outcome is unknown or an undo fails, the trade is cancelled, the items go back to their owners and the trade id is logged at `SEVERE` with the currencies to check. As with the built-in currencies, a server stop between the currency settlement and the item swap is not covered.
+
+The trade window has room for three currencies, built-in ones first, then the others in the order of the config. Only those are used. When a currency is disabled, unregistered, replaced by a new provider or pushed out of the window, its amounts are removed from open trades and both players confirm again. An amount that a player is still typing for it is discarded.
+
 ## Building
 
 InTrade uses Gradle.
@@ -81,10 +107,10 @@ The code is compiled against Paper API 1.21.1 with Java 21 bytecode. The dialog 
 
 ## Project layout
 
-* **api** - the public API: the `InTrade` service, `TradeOffer`, `TraderStats` and events. Shaded into the plugin jar.
+* **api** - the public API: the `InTrade` service, `TradeOffer`, `TraderStats`, `TradeCurrency` and events. Shaded into the plugin jar.
 * **plugin** - the implementation.
   * `trade` - requests, trade sessions and the trade window
-  * `currency` - Vault, experience and PlayerPoints behind one `Currency` interface
+  * `currency` - Vault, experience and PlayerPoints (`BuiltInCurrency`) and currencies of other plugins (`ExternalCurrency`) behind one `Currency` interface
   * `storage` - SQLite / MySQL through HikariCP. Writes go through one thread to keep their order, results return to the main thread through `MainThread`. `ServerLock` keeps two running servers from sharing one `server-id`
   * `menu`, `input`, `text`, `config`, `hook` - history menus, amount input, messages, settings, PlaceholderAPI
 

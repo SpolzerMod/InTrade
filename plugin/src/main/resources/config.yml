@@ -36,6 +36,7 @@ safety:
   # Maximum duration of a trade, after which it is cancelled. 0 disables the limit.
   max-trade-seconds: 300
 
+# The trade window has room for three currencies. Only the first three available ones are used.
 currencies:
   # Requires Vault and an economy plugin.
   money:
@@ -46,6 +47,10 @@ currencies:
   # Requires PlayerPoints.
   playerpoints:
     enabled: true
+  # Currencies of other plugins (see the API in the README) are disabled until they are enabled here
+  # under their id. They come after the built-in ones, in the order of this list. For example:
+  # tokens:
+  #   enabled: true
 
 sounds:
   # Volume of all sounds, from 0 to 1.

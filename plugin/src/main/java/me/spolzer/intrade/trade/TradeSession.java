@@ -1,13 +1,12 @@
 package me.spolzer.intrade.trade;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
-import java.util.logging.Logger;
+import java.util.logging.Level;
 import me.spolzer.intrade.InTradePlugin;
 import me.spolzer.intrade.api.TradeOffer;
 import me.spolzer.intrade.api.event.TradeCancelEvent;
@@ -16,6 +15,7 @@ import me.spolzer.intrade.config.Settings;
 import me.spolzer.intrade.config.TradeSound;
 import me.spolzer.intrade.currency.Currencies;
 import me.spolzer.intrade.currency.Currency;
+import me.spolzer.intrade.currency.CurrencyException;
 import me.spolzer.intrade.menu.Icons;
 import me.spolzer.intrade.storage.TradeRecord;
 import me.spolzer.intrade.text.Arg;
@@ -74,17 +74,45 @@ public final class TradeSession {
     boolean bothEmpty() { return a.isEmpty() && b.isEmpty(); }
 
     void open() {
-        render();
-        for (TradeSide side : List.of(a, b)) {
-            if (side.player.openInventory(side.menu.getInventory()) == null) {
-                stop(TradeCancelEvent.Reason.CANCELLED, "trade.cancelled.blocked", side, null);
-                return;
+        guard(() -> {
+            render();
+            for (TradeSide side : List.of(a, b)) {
+                if (side.player.openInventory(side.menu.getInventory()) == null) {
+                    stop(TradeCancelEvent.Reason.CANCELLED, "trade.cancelled.blocked", side, null);
+                    return;
+                }
+                sound(TradeSound.OPEN, side.player);
             }
-            sound(TradeSound.OPEN, side.player);
+        });
+    }
+
+    /**
+     * Runs a step of this trade. If it fails, for example because a currency of another plugin throws, the trade is
+     * cancelled like by a player and the items are returned.
+     */
+    void guard(Runnable step) {
+        try {
+            step.run();
+        } catch (RuntimeException e) {
+            failed(e);
         }
     }
 
+    private void failed(RuntimeException e) {
+        String trade = "The trade between " + a.player.getName() + " and " + b.player.getName();
+        if (e instanceof CurrencyException) {
+            plugin.getLogger().log(Level.SEVERE, trade + " is cancelled: " + e.getMessage(), e.getCause());
+        } else {
+            plugin.getLogger().log(Level.SEVERE, trade + " failed and is cancelled", e);
+        }
+        stop(TradeCancelEvent.Reason.CANCELLED, "trade.cancelled.failed", null, null);
+    }
+
     void tick() {
+        guard(this::step);
+    }
+
+    private void step() {
         if (finished) return;
         for (TradeSide side : List.of(a, b)) {
             if (!side.player.isOnline()) {
@@ -141,6 +169,7 @@ public final class TradeSession {
     }
 
     private void render() {
+        if (finished) return;
         long now = System.currentTimeMillis();
         a.menu.render(now);
         b.menu.render(now);
@@ -227,7 +256,7 @@ public final class TradeSession {
         b.ready = false;
         countdownEnd = 0;
         long version = OfferMark.next();
-        plugin.storage().saveOffer(side.id(), version, TradeSide.list(next)).whenCompleteAsync((ignored, failure) -> {
+        plugin.storage().saveOffer(side.id(), version, TradeSide.list(next)).whenCompleteAsync((ignored, failure) -> guard(() -> {
             side.pending = false;
             if (finished) return;
             if (failure != null) {
@@ -252,7 +281,7 @@ public final class TradeSession {
             plugin.offerMark().set(side.player, version);
             sound(sound, side.player);
             changed(side);
-        }, plugin.mainThread());
+        }), plugin.mainThread());
     }
 
     // Once the file holds the current version, the older rows are not needed after a crash
@@ -277,36 +306,66 @@ public final class TradeSession {
         changed(side);
     }
 
-    /** Removes the amounts of currencies that were disabled by a reload, so the trade can still complete. */
-    void dropDisabledCurrencies() {
-        if (finished) return;
-        for (TradeSide side : List.of(a, b)) {
-            if (!side.currencies.keySet().removeIf(id -> currencies().byId(id) == null)) continue;
-            messages().send(side.player, "trade.currency-disabled");
-            messages().send(other(side).player, "trade.currency-disabled");
-            changed(side);
+    /**
+     * Removes the amounts of currencies that a reload disabled, left out of the trade window or gave to a new provider,
+     * so the trade can still complete and nothing is settled with a currency the players did not see.
+     *
+     * @param before the currencies that were active before the reload
+     */
+    void dropDisabledCurrencies(List<Currency> before) {
+        guard(() -> {
+            if (finished) return;
+            for (TradeSide side : List.of(a, b)) {
+                if (!side.currencies.keySet().removeIf(id -> !stillActive(before, id))) continue;
+                messages().send(side.player, "trade.currency-disabled");
+                messages().send(other(side).player, "trade.currency-disabled");
+                changed(side);
+            }
+        });
+    }
+
+    private boolean stillActive(List<Currency> before, String id) {
+        for (Currency currency : before) {
+            if (currency.id().equals(id)) return currencies().current(currency) != null;
         }
+        return currencies().byId(id) != null;
     }
 
     void askAmount(TradeSide side, Currency currency) {
         side.mode = TradeSide.Mode.INPUT;
         unready(side);
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        Bukkit.getScheduler().runTask(plugin, () -> guard(() -> {
             if (finished) return;
             side.player.closeInventory();
-            plugin.prompts().ask(side.player, currency, side.currency(currency.id()), value -> {
-                if (finished || !side.player.isOnline()) return;
-                side.mode = TradeSide.Mode.MENU;
-                if (value != null && currencies().byId(currency.id()) != null) setCurrency(side, currency, value);
-                reopen(side);
-            });
-        });
+            if (currencies().current(currency) == null) {
+                amountEntered(side, currency, null);
+                return;
+            }
+            plugin.prompts().ask(side.player, currency, side.currency(currency.id()),
+                    value -> guard(() -> amountEntered(side, currency, value)), this::failed);
+        }));
+    }
+
+    // The currency may have been disabled or replaced while the player was typing: the answer is then dropped
+    void amountEntered(TradeSide side, Currency asked, BigDecimal value) {
+        if (finished || !side.player.isOnline()) return;
+        side.mode = TradeSide.Mode.MENU;
+        Currency currency = currencies().current(asked);
+        if (currency == null) {
+            if (value != null) messages().send(side.player, "trade.currency-disabled");
+            a.ready = false;
+            b.ready = false;
+            countdownEnd = 0;
+        } else if (value != null) {
+            setCurrency(side, currency, value);
+        }
+        reopen(side);
     }
 
     void preview(TradeSide side, ItemStack container) {
         side.mode = TradeSide.Mode.PREVIEW;
         ItemStack snapshot = container.clone();
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        Bukkit.getScheduler().runTask(plugin, () -> guard(() -> {
             if (finished) return;
             side.preview = new PreviewMenu(this, side, snapshot,
                     messages().get(side.player, "preview.title", TradeMenu.itemArgs(snapshot)));
@@ -316,17 +375,17 @@ public final class TradeSession {
             } else {
                 render();
             }
-        });
+        }));
     }
 
     public void previewClosed(TradeSide side) {
         if (finished || side.mode != TradeSide.Mode.PREVIEW) return;
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        Bukkit.getScheduler().runTask(plugin, () -> guard(() -> {
             if (finished || side.mode != TradeSide.Mode.PREVIEW) return;
             side.mode = TradeSide.Mode.MENU;
             side.preview = null;
             reopen(side);
-        });
+        }));
     }
 
     private void reopen(TradeSide side) {
@@ -443,33 +502,12 @@ public final class TradeSession {
             return;
         }
 
-        // Everything is withdrawn before anything is paid out. If a step fails, the steps done so far are undone
-        // in reverse order and the trade stays open.
-        List<Transfer> undo = new ArrayList<>();
-        for (TradeSide side : List.of(a, b)) {
-            for (Map.Entry<String, BigDecimal> entry : side.currencyMap().entrySet()) {
-                Currency currency = currencies().byId(entry.getKey());
-                BigDecimal amount = entry.getValue();
-                if (!currency.withdraw(side.player, amount)) {
-                    rollback(undo);
-                    fail("trade.failed.not-enough", side);
-                    return;
-                }
-                undo.add(new Transfer(side.player, currency, amount, true));
-            }
-        }
-        for (TradeSide side : List.of(a, b)) {
-            Player receiver = other(side).player;
-            for (Map.Entry<String, BigDecimal> entry : side.currencyMap().entrySet()) {
-                Currency currency = currencies().byId(entry.getKey());
-                BigDecimal amount = entry.getValue();
-                if (!currency.deposit(receiver, amount)) {
-                    rollback(undo);
-                    fail("trade.failed.deposit", other(side));
-                    return;
-                }
-                undo.add(new Transfer(receiver, currency, amount, false));
-            }
+        // If the currencies cannot be moved the trade stays open, unless a balance may be wrong
+        Settlement.Failure settlement = Settlement.run(plugin.getLogger(), currencies().active(), a, b);
+        if (settlement != null) {
+            if (settlement.unknown()) stop(TradeCancelEvent.Reason.CANCELLED, settlement.key(), null, null);
+            else fail(settlement.key(), settlement.cause());
+            return;
         }
 
         Map<String, BigDecimal> aCurrencies = a.currencyMap();
@@ -524,26 +562,11 @@ public final class TradeSession {
         release(side);
     }
 
-    private void rollback(List<Transfer> undo) {
-        for (int i = undo.size() - 1; i >= 0; i--) undo.get(i).undo(plugin.getLogger());
-    }
-
-    private record Transfer(Player player, Currency currency, BigDecimal amount, boolean withdrawn) {
-        void undo(Logger logger) {
-            boolean done = withdrawn ? currency.deposit(player, amount) : currency.withdraw(player, amount);
-            if (!done) {
-                logger.severe("Could not undo a transfer of " + amount.toPlainString() + " " + currency.id()
-                        + (withdrawn ? " from " : " to ") + player.getName()
-                        + " after a failed trade. The balance needs to be corrected manually");
-            }
-        }
-    }
-
     private void fail(String key, TradeSide cause) {
         a.ready = false;
         b.ready = false;
         countdownEnd = 0;
-        Arg who = Arg.of("player", cause.player.getName());
+        Arg who = Arg.of("player", cause != null ? cause.player.getName() : "");
         for (TradeSide side : List.of(a, b)) {
             messages().send(side.player, key, who);
             error(side.player);

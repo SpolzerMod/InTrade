@@ -6,7 +6,7 @@ import java.util.Locale;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 
-final class ExperienceCurrency implements Currency {
+final class ExperienceCurrency implements BuiltInCurrency {
     private final NumberFormat format;
 
     ExperienceCurrency(Locale locale) {

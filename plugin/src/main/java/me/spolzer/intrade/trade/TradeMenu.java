@@ -195,6 +195,10 @@ public final class TradeMenu implements InventoryHolder {
     public void handleClick(InventoryClickEvent event) {
         event.setCancelled(true);
         if (session.finished() || side.mode != TradeSide.Mode.MENU) return;
+        session.guard(() -> click(event));
+    }
+
+    private void click(InventoryClickEvent event) {
         ClickType click = event.getClick();
         boolean left = click == ClickType.LEFT || click == ClickType.SHIFT_LEFT;
         boolean right = click == ClickType.RIGHT || click == ClickType.SHIFT_RIGHT;

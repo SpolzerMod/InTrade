@@ -143,11 +143,14 @@ trade:
     died: "<white><player></white> <red>died, trade cancelled."
     blocked: "<red>Could not open the trade window for <player>."
     timeout: "<red>The trade took too long and was cancelled."
+    failed: "<red>Something went wrong, trade cancelled. Your items are returned."
+    error: "<red>A payment could not be confirmed. Trade cancelled, your items are returned. If a balance looks wrong, contact the staff."
     distance: "<red>You are too far apart, trade cancelled."
   failed:
     not-enough: "<white><player></white> <red>does not have enough funds. Trade stopped."
     no-space: "<white><player></white> <red>does not have enough inventory space. Trade stopped."
     deposit: "<white><player></white> <red>cannot receive this amount. Trade stopped, all balances are restored."
+    settle: "<red>A payment was refused. Trade stopped, all balances are restored."
 
 mail:
   saved: "<yellow>Your trade items are safe and will be returned after you respawn. If they are not, use <white>/trade claim</white>."

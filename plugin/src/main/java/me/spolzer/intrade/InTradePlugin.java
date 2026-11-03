@@ -9,10 +9,12 @@ import me.spolzer.intrade.api.InTrade;
 import me.spolzer.intrade.command.TradeCommand;
 import me.spolzer.intrade.config.Settings;
 import me.spolzer.intrade.currency.Currencies;
+import me.spolzer.intrade.currency.Currency;
 import me.spolzer.intrade.hook.TradePlaceholders;
 import me.spolzer.intrade.input.AmountPrompt;
 import me.spolzer.intrade.listener.MenuListener;
 import me.spolzer.intrade.listener.PlayerListener;
+import me.spolzer.intrade.listener.ServiceListener;
 import me.spolzer.intrade.stats.Stats;
 import me.spolzer.intrade.storage.TradeStorage;
 import me.spolzer.intrade.text.Arg;
@@ -30,7 +32,8 @@ import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public final class InTradePlugin extends JavaPlugin {
+// Not final: MockBukkit loads the plugin through a generated subclass in the tests
+public class InTradePlugin extends JavaPlugin {
     private final Currencies currencies = new Currencies();
     private final Messages messages = new Messages(this);
     private final MainThread mainThread = new MainThread(getLogger());
@@ -41,6 +44,8 @@ public final class InTradePlugin extends JavaPlugin {
     private TradeManager trades;
     private RequestManager requests;
     private AmountPrompt prompts;
+    // Currencies of other plugins are picked up only after the first load, when Vault is ready as well
+    private boolean currenciesLoaded;
 
     @Override
     public void onEnable() {
@@ -74,6 +79,7 @@ public final class InTradePlugin extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new MenuListener(), this);
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
+        getServer().getPluginManager().registerEvents(new ServiceListener(this), this);
         PluginCommand command = getCommand("trade");
         TradeCommand executor = new TradeCommand(this);
         command.setExecutor(executor);
@@ -83,6 +89,7 @@ public final class InTradePlugin extends JavaPlugin {
         // Economy plugins register with Vault in their own onEnable
         Bukkit.getScheduler().runTask(this, () -> {
             currencies.load(settings, messages.locale(), getLogger());
+            currenciesLoaded = true;
             prompts.hookFloodgate();
             if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) new TradePlaceholders(this).register();
             for (Player player : Bukkit.getOnlinePlayers()) {
@@ -112,9 +119,24 @@ public final class InTradePlugin extends JavaPlugin {
         return CompletableFuture.supplyAsync(this::readConfig, task -> getServer().getScheduler().runTaskAsynchronously(this, task))
                 .thenAcceptAsync(loaded -> {
                     apply(loaded);
-                    currencies.load(settings, messages.locale(), getLogger());
-                    trades.currenciesReloaded();
+                    loadCurrencies();
                 }, mainThread);
+    }
+
+    /** Reloads the currencies after another plugin registered or unregistered one. */
+    public void reloadCurrencies() {
+        if (!Bukkit.isPrimaryThread()) {
+            mainThread.execute(this::reloadCurrencies);
+            return;
+        }
+        if (!currenciesLoaded || !isEnabled()) return;
+        loadCurrencies();
+    }
+
+    private void loadCurrencies() {
+        List<Currency> before = currencies.active();
+        currencies.load(settings, messages.locale(), getLogger());
+        trades.currenciesReloaded(before);
     }
 
     private record Loaded(Settings settings, Messages.Catalog catalog) {

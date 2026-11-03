@@ -2,10 +2,13 @@ package me.spolzer.intrade.trade;
 
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Level;
 import me.spolzer.intrade.InTradePlugin;
 import me.spolzer.intrade.api.event.TradeStartEvent;
+import me.spolzer.intrade.currency.Currency;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -34,12 +37,20 @@ public final class TradeManager {
         sessions.values().removeIf(existing -> existing == session);
     }
 
+    // Each session handles its own failures, the catch only keeps one broken session from stopping the others
     public void tick() {
-        for (TradeSession session : new LinkedHashSet<>(sessions.values())) session.tick();
+        for (TradeSession session : new LinkedHashSet<>(sessions.values())) {
+            try {
+                session.tick();
+            } catch (RuntimeException e) {
+                plugin.getLogger().log(Level.SEVERE, "Could not update a trade", e);
+            }
+        }
     }
 
-    public void currenciesReloaded() {
-        for (TradeSession session : new LinkedHashSet<>(sessions.values())) session.dropDisabledCurrencies();
+    /** Called after the currencies were loaded again, {@code before} holds the ones that were active until then. */
+    public void currenciesReloaded(List<Currency> before) {
+        for (TradeSession session : new LinkedHashSet<>(sessions.values())) session.dropDisabledCurrencies(before);
     }
 
     public void shutdown() {

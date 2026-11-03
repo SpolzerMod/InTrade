@@ -113,8 +113,11 @@ public final class Messages {
         return mini.stripTags(text);
     }
 
+    // Currencies of other plugins may have no name in the language file, then the id is shown
     public Arg currency(CommandSender to, String id) {
-        return Arg.markup("currency", raw(to, "currency." + id));
+        String key = "currency." + id;
+        String name = raw(to, key);
+        return name.equals(key) ? Arg.of("currency", id) : Arg.markup("currency", name);
     }
 
     public void send(CommandSender to, String key, Arg... args) {

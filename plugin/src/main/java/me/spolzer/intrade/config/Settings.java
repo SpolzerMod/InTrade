@@ -5,7 +5,7 @@ import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -36,10 +36,18 @@ public record Settings(
         Map<TradeSound, SoundEffect> sounds,
         Database database) {
 
+    /** Ids of the currencies InTrade supports itself. They are enabled unless the config turns them off. */
+    public static final Set<String> BUILT_IN_CURRENCIES = Set.of("money", "experience", "playerpoints");
+
     public static Settings load(ConfigurationSection config, Logger logger) {
-        Set<String> currencies = new HashSet<>();
-        for (String id : List.of("money", "experience", "playerpoints")) {
-            if (config.getBoolean("currencies." + id + ".enabled", true)) currencies.add(id);
+        // Enabled currencies in the order of the config, which is also the order of the currencies of other plugins
+        Set<String> ids = new LinkedHashSet<>();
+        ConfigurationSection section = config.getConfigurationSection("currencies");
+        if (section != null) ids.addAll(section.getKeys(false));
+        ids.addAll(BUILT_IN_CURRENCIES);
+        Set<String> currencies = new LinkedHashSet<>();
+        for (String id : ids) {
+            if (config.getBoolean("currencies." + id + ".enabled", BUILT_IN_CURRENCIES.contains(id))) currencies.add(id);
         }
         Set<Material> blocked = EnumSet.noneOf(Material.class);
         for (String name : config.getStringList("blocked-items")) {
@@ -66,7 +74,7 @@ public record Settings(
                 config.getBoolean("history.enabled", true),
                 Math.max(0, config.getInt("history.keep-days", 90)),
                 Math.max(0, config.getLong("stats.pair-cooldown-minutes", 60)) * 60_000L,
-                Set.copyOf(currencies),
+                Collections.unmodifiableSet(currencies),
                 Set.copyOf(blocked),
                 Set.copyOf(worlds),
                 sounds(config, logger),
@@ -88,6 +96,7 @@ public record Settings(
         return Map.copyOf(sounds);
     }
 
+    /** Built-in currencies are enabled by default, currencies of other plugins only when the config enables them. */
     public boolean currencyEnabled(String id) { return currencies.contains(id); }
     public boolean isBlocked(Material material) { return blockedItems.contains(material); }
     public boolean isWorldDisabled(String world) { return disabledWorlds.contains(world.toLowerCase(Locale.ROOT)); }

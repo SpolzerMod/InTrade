@@ -39,6 +39,9 @@ public interface InTrade {
     /** Players with the most counted trades, best first. */
     CompletableFuture<List<TraderStats>> topTraders(int limit);
 
-    /** Ids of the enabled currencies, for example {@code money}, {@code experience}, {@code playerpoints}. */
+    /**
+     * Ids of the enabled currencies, for example {@code money}, {@code experience}, {@code playerpoints} and the
+     * enabled currencies of other plugins ({@link me.spolzer.intrade.api.currency.TradeCurrency}).
+     */
     Set<String> currencies();
 }

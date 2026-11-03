@@ -9,7 +9,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
 // Vault works with double, so amounts are converted only at this boundary
-final class VaultCurrency implements Currency {
+final class VaultCurrency implements BuiltInCurrency {
     private final Economy economy;
     private final int scale;
 
